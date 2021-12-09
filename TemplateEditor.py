@@ -1,9 +1,9 @@
 from __future__ import annotations
 from dataclasses import dataclass
+from abc import abstractmethod
 
 import wx
 from wx import richtext as rtc
-import re as Regex
 import enum
 
 from Log import Log
@@ -13,14 +13,16 @@ from GenTemplateEditor import MyFrame1
 class TemplateEditorFrame(MyFrame1):
     def __init__(self, parent):
         MyFrame1.__init__(self, parent)
-        self.nodes: Node=Node("", NodeType.Empty)
+        self.nodes: Node=Node("")
 
         self.Show()
 
 
     def OnTextTop( self, event ):
         s=self.m_TopText.GetValue()
-        self.nodes=Node(s, NodeType.Root).Process()
+        root=Node(s)
+        root.type=NodeType.Root
+        self.nodes=root.Process()
         Log("\n*********************\nNodes")
         Log(repr(self.nodes))
         #s=parseTemplate(s)
@@ -131,12 +133,14 @@ class Node():
     zcount: int=0       # The z is to move these to the end of the variable lists while debugging
     znodelist: list[Node]=[]
 
-    def __init__(self, s: str, nodetype: NodeType):
+    def __init__(self, s: str):
         self.subnodes: list[Node]=[]       # A list of subnodes for this node
-        self.string: str=s              # If a String node, the string. Note that subnodes and string are never both non-None
-        self.type: NodeType=nodetype
+        self.type: NodeType=NodeType.Empty  # Normally overwritten
+        self.string=s
+
+        # We track the Nodes using this universal ID and list
         self.id=Node.zcount
-        Node.zcount+=1
+        Node.zcount+=1  # Ready for the next one
         Node.znodelist.append(self)
         Log(f"Node #{self.id} ('{self.string}', {self.type}) created.")
 
@@ -144,22 +148,17 @@ class Node():
     def __str__(self) ->str:
         if self.type == NodeType.Empty:
             return ""
-        if self.type == NodeType.String:
-            return self.string
+
+        # A Node can either have subnodes or a string  (maybe?)
         if self.subnodes:
             nstr="".join([str(x) for x in self.subnodes])
         else:
             nstr=self.string
-        if self.type == NodeType.Root:
-            return nstr
-        if self.type == NodeType.Double:
-            return "{{"+nstr+"}}"
-        if self.type == NodeType.Triple:
-            return "{{{"+nstr+"}}}"
-        assert False
+        return nstr
 
 
-    def __repr__(self) ->str:
+
+    def __repr__(self) -> str:
         Log(f"repr #{self.id}")
         offset=" "*Node.offset  # For this call to repr, we use the offset at start
         if self.type == NodeType.Empty:
@@ -171,17 +170,7 @@ class Node():
             Node.offset-=3
             return r
 
-        if self.type == NodeType.Double or self.type == NodeType.Triple or self.type == NodeType.String:
-            r=""
-            if self.string:
-                r=offset+f"Node #{self.id} -- {self.type},  '{self.string}'"
-            if self.subnodes:
-                Node.offset+=3
-                r+=offset+f"Node #{self.id} -- {self.type},  subnodes:\n"+"".join([repr(x)+"\n" for x in self.subnodes])
-                Node.offset-=3
-            return r
 
-        assert False
 
 
     def RichText(self, r: RichTextSpec) -> None:
@@ -189,7 +178,6 @@ class Node():
             return
 
         indent=' '*r.indent
-
         if self.type == NodeType.Root:
             r.rtc.WriteText("Root\n")
             if self.subnodes:
@@ -199,43 +187,16 @@ class Node():
                 r.indent-=2
             return
 
-        if self.type == NodeType.String or self.type == NodeType.Double or self.type == NodeType.Triple:
-            Log(f"Node(#{self.id},  {self.type}, subnodes={len(self.subnodes)}, '{self.string}'")
-            # Special case it when the Node has a single string node inside
-            if self.string:
-                r.rtc.WriteText(indent+self.string+"\n")
-            elif len(self.subnodes) == 1 and self.subnodes[0].type == NodeType.String and self.subnodes[0].string:
-                r.rtc.WriteText(indent+self.subnodes[0].string+"\n")
-            if self.subnodes:
-                self.WriteNodes(indent, r, self.type)
-            return
-
         assert False
 
 
-    def WriteNodes(self, indent: str, r: rtc, type: NodeType):
-        if type == NodeType.String:
-            bopen=""
-            bclose=""
-        elif type == NodeType.Double:
-            bopen="{{\n"
-            bclose="}}\n"
-        elif type == NodeType.Triple:
-            bopen="{{{\n"
-            bclose="}}}\n"
-        else:
-            assert False
-
-        r.rtc.WriteText(indent+bopen)
-        r.indent+=2
-        for x in self.subnodes:
-            x.RichText(r)
-        r.indent-=2
-        r.rtc.WriteText(indent+bclose)
+    @abstractmethod
+    def WriteNodes(self, indent: str, r: rtc):
+        pass
 
 
-        #-----------------------------------------------------
-        # Find the first open delim
+    #-----------------------------------------------------
+    # Find the first open delim
     def FindFirstOpenDelim(self) -> Delim:
         d0=Delim.Nextdelim(self.string, 0, Open=True)
         if d0.NotFound:
@@ -243,7 +204,7 @@ class Node():
                 return Delim(-1, "")  # There's no further processing possible here
 
             # Turn the text into a String sub-node
-            self.subnodes.append(Node(self.string, NodeType.String))
+            self.subnodes.append(NodeString(self.string))
             Log(f"FindFirstOpenDelim: Node #{self.subnodes[-1].id} appended to Node #{self.id}")
             self.string=""
             return Delim(-1, "")
@@ -340,29 +301,94 @@ class Node():
 
         # Turn each of the parts into a new Node on the current Node's subnodes list
         if lead:
-            self.subnodes.append(Node(lead, NodeType.String).Process())
+            self.subnodes.append(NodeString(lead).Process())
             Log(f"Process: Node #{self.subnodes[-1].id} appended to Node #{self.id}")
         if mid:
             if d0.Len == 2:
-                self.subnodes.append(Node(mid, NodeType.Double).Process())
+                self.subnodes.append(NodeDouble(mid).Process())
                 Log(f"Process: Node #{self.subnodes[-1].id} appended to Node #{self.id}")
             elif d0.Len == 3:
-                self.subnodes.append(Node(mid, NodeType.Triple).Process())
+                self.subnodes.append(NodeTriple(mid).Process())
                 Log(f"Process: Node #{self.subnodes[-1].id} appended to Node #{self.id}")
 
         if end:
-            self.subnodes.append(Node(end, NodeType.String).Process())
+            self.subnodes.append(NodeString(end).Process())
             Log(f"Process: Node #{self.subnodes[-1].id} appended to Node #{self.id}")
 
         return self
 
-class StringNode(Node):
 
-    def __init__(self):
-        super.__init__()
+class NodeContainer(Node):
+    def __init__(self, s: str):
+        super().__init__(s)
 
-        self._string: str=""
+    def __repr__(self) -> str:
+        r=""
+        offset=" "*Node.offset
+        if self.string:
+            r=offset+f"Node #{self.id} -- {self.type},  '{self.string}'"
+        if self.subnodes:
+            Node.offset+=3
+            r+=offset+f"Node #{self.id} -- {self.type},  subnodes:\n"+"".join([repr(x)+"\n" for x in self.subnodes])
+            Node.offset-=3
+        return r
 
+    def RichText(self, r: RichTextSpec):
+        Log(f"Node(#{self.id},  {self.type}, subnodes={len(self.subnodes)}, '{self.string}'")
+        # Special case it when the Node has a single string node inside
+        indent=' '*r.indent
+        if self.string:
+            r.rtc.WriteText(indent+self.string+"\n")
+        elif len(self.subnodes) == 1 and self.subnodes[0].type == NodeType.String and self.subnodes[0].string:
+            r.rtc.WriteText(indent+self.subnodes[0].string+"\n")
+        if self.subnodes:
+            self.WriteNodes(indent, r)
+
+
+    def WriteGenericNodes(self, indent: str, r: rtc, bopen: str, bclose: str):
+        r.rtc.WriteText(indent+bopen)
+        r.indent+=2
+        for x in self.subnodes:
+            x.RichText(r)
+        r.indent-=2
+        r.rtc.WriteText(indent+bclose)
+
+#-------------------------------------------
+class NodeString(NodeContainer):
+
+    def __init__(self, s: str) -> None:
+        super().__init__(s)
+        self.type=NodeType.String
+        self.string: str=""
+
+    def WriteNodes(self, indent: str, r: rtc):
+        super().WriteGenericNodes(indent, r, "", "")
+
+#-------------------------------------------
+class NodeDouble(NodeContainer):
+    def __init__(self, s: str) -> None:
+        super().__init__(s)
+        self.type=NodeType.Double
+
+    def __str__(self) -> str:
+        s=super().__str__()
+        return "{{"+s+"}}"
+
+    def WriteNodes(self, indent: str, r: rtc):
+        super().WriteGenericNodes(indent, r, "{{\n", "}}\n")
+
+#-------------------------------------------
+class NodeTriple(NodeContainer):
+    def __init__(self, s: str) -> None:
+        super().__init__(s)
+        self.type=NodeType.Triple
+
+    def __str__(self) -> str:
+        s=super().__str__()
+        return "{{{"+s+"}}}"
+
+    def WriteNodes(self, indent: str, r: rtc):
+        super().WriteGenericNodes(indent, r, "{{{\n", "}}}\n")
 
 
 
