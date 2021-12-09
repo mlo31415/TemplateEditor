@@ -9,6 +9,7 @@
 
 import wx
 import wx.xrc
+import wx.richtext
 
 ###########################################################################
 ## Class MyFrame1
@@ -17,20 +18,24 @@ import wx.xrc
 class MyFrame1 ( wx.Frame ):
 
 	def __init__( self, parent ):
-		wx.Frame.__init__ ( self, parent, id = wx.ID_ANY, title = u"MediaWiki Template Editor", pos = wx.DefaultPosition, size = wx.Size( 1021,622 ), style = wx.DEFAULT_FRAME_STYLE|wx.TAB_TRAVERSAL )
+		wx.Frame.__init__ ( self, parent, id = wx.ID_ANY, title = u"MediaWiki Template Editor", pos = wx.DefaultPosition, size = wx.Size( 1021,793 ), style = wx.DEFAULT_FRAME_STYLE|wx.TAB_TRAVERSAL )
 
 		self.SetSizeHints( wx.DefaultSize, wx.DefaultSize )
 
-		gSizer1 = wx.GridSizer( 3, 1, 0, 0 )
+		gSizer1 = wx.GridSizer( 1, 1, 0, 0 )
 
-		self.m_TopText = wx.TextCtrl( self, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.Size( 999,100 ), wx.TE_BESTWRAP|wx.TE_MULTILINE )
-		gSizer1.Add( self.m_TopText, 0, wx.ALL, 5 )
+		fgSizer1 = wx.FlexGridSizer( 2, 1, 0, 0 )
+		fgSizer1.SetFlexibleDirection( wx.BOTH )
+		fgSizer1.SetNonFlexibleGrowMode( wx.FLEX_GROWMODE_SPECIFIED )
 
-		self.m_staticline1 = wx.StaticLine( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.LI_HORIZONTAL )
-		gSizer1.Add( self.m_staticline1, 0, wx.EXPAND |wx.ALL, 5 )
+		self.m_TopText = wx.TextCtrl( self, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.Size( 999,150 ), wx.TE_BESTWRAP|wx.TE_MULTILINE )
+		fgSizer1.Add( self.m_TopText, 0, wx.ALL, 5 )
 
-		self.m_BottomText = wx.TextCtrl( self, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.Size( 999,100 ), wx.TE_BESTWRAP|wx.TE_MULTILINE )
-		gSizer1.Add( self.m_BottomText, 0, wx.ALL, 5 )
+		self.m_richText1 = wx.richtext.RichTextCtrl( self, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.Size( -1,999 ), 0|wx.VSCROLL|wx.HSCROLL|wx.NO_BORDER|wx.WANTS_CHARS )
+		fgSizer1.Add( self.m_richText1, 1, wx.EXPAND |wx.ALL, 5 )
+
+
+		gSizer1.Add( fgSizer1, 1, wx.EXPAND, 5 )
 
 
 		self.SetSizer( gSizer1 )
@@ -41,8 +46,6 @@ class MyFrame1 ( wx.Frame ):
 		# Connect Events
 		self.Bind( wx.EVT_SIZE, self.PanelOnSize )
 		self.m_TopText.Bind( wx.EVT_TEXT, self.OnTextTop )
-		self.m_BottomText.Bind( wx.EVT_CHAR, self.OnCharBottom )
-		self.m_BottomText.Bind( wx.EVT_TEXT, self.OnTextBottom )
 
 	def __del__( self ):
 		pass
@@ -53,12 +56,6 @@ class MyFrame1 ( wx.Frame ):
 		event.Skip()
 
 	def OnTextTop( self, event ):
-		event.Skip()
-
-	def OnCharBottom( self, event ):
-		event.Skip()
-
-	def OnTextBottom( self, event ):
 		event.Skip()
 
 
