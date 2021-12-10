@@ -4,6 +4,7 @@ from abc import abstractmethod
 
 import wx
 from wx import richtext as rtc
+from wx import TextCtrl
 import enum
 
 from Log import Log
@@ -22,25 +23,36 @@ class TemplateEditorFrame(MyFrame1):
         s=self.m_TopText.GetValue()
         root=Node(s, NodeType.Root)
         self.nodes=root.Process()
+
         r=RichTextSpec(self.m_richText1, 0)
         r.rtc.Clear()
         self.nodes.RichText(r)
+
+        b=TextSpec(self.m_bottomText, 0)
+        b.TextCtl.Clear()
+        self.nodes.PlainText(b)
 
         Log("\n*********  Nodes  ************")
         Log(repr(self.nodes))
 
 
     def OnTextBottom(self, event):
-        s=self.m_richText1.GetValue()
+        s=self.m_bottomText.GetValue()
         s.replace("  ", " ")
-        self.m_TopText.ChangeValue(s)
+        #self.m_TopText.ChangeValue(s)
 
 
 @dataclass
 class RichTextSpec:
     rtc: rtc
     indent: int
-    
+
+
+@dataclass
+class TextSpec:
+    TextCtl: TextCtl
+    indent: int
+
 #===================
 @dataclass
 class Delim:
@@ -182,6 +194,21 @@ class Node():
 
         assert False
 
+
+    def PlainText(self, r: TextSpec) -> None:
+        if self.type == NodeType.Empty:
+            return
+
+        if self.type == NodeType.Root:
+            r.TextCtl.AppendText("Root\n")
+            if self.subnodes:
+                r.indent+=5
+                for x in self.subnodes:
+                    x.PlainText(r)
+                r.indent-=5
+            return
+
+        assert False
 
     @abstractmethod
     def WriteNodes(self, r: rtc):
@@ -365,27 +392,43 @@ class NodeContainer(Node):
 
         indent=' '*r.indent
         if self.string:
-            r.rtc.WriteText(indent+self.string+"\n")
+            GenericWrite(r, indent+self.string+"\n")
         # elif len(self.subnodes) == 1 and self.subnodes[0].type == NodeType.String and self.subnodes[0].string:
         #     r.rtc.WriteText(indent+self.subnodes[0].string+"\n")
         elif self.subnodes:
             self.WriteNodes(r)
 
+    def PlainText(self, b: TextSpec):
+        Log(f"Node(#{self.id},  {self.type}, subnodes={len(self.subnodes)}, '{self.string}'")
 
-    def WriteGenericNodes(self, r: rtc, bopen: str, bclose: str):
+        indent=' '*b.indent
+        if self.string:
+            b.TextCtl.AppendText(indent+self.string+"\n")
+        # elif len(self.subnodes) == 1 and self.subnodes[0].type == NodeType.String and self.subnodes[0].string:
+        #     r.rtc.WriteText(indent+self.subnodes[0].string+"\n")
+        elif self.subnodes:
+            self.WriteNodes(b)
+
+    def WriteGenericNodes(self, r: rtc|TextCtrl, bopen: str, bclose: str):
         indent=' '*r.indent
         if len(self.subnodes) == 1 and self.subnodes[0].type == NodeType.String:
-            r.rtc.WriteText(indent+"{{"+self.subnodes[0].string+"}}\n")
+            GenericWrite(r, indent+"{{"+self.subnodes[0].string+"}}\n")
             return
 
         # Normal case
-        r.rtc.WriteText(indent+bopen)
+        GenericWrite(r, indent+bopen)
         r.indent+=2
         for x in self.subnodes:
             x.RichText(r)
         r.indent-=2
-        r.rtc.WriteText(indent+bclose)
+        GenericWrite(r, indent+bclose)
 
+
+def GenericWrite(r: rtc|TextCtrl, s: str) -> None:
+    if type(r) is RichTextSpec:
+        r.rtc.WriteText(s)
+    else:
+        r.TextCtl.AppendText(s)
 
 #-------------------------------------------
 class NodeString(NodeContainer):
@@ -407,7 +450,7 @@ class NodeDouble(NodeContainer):
         s=super().__str__()
         return "{{"+s+"}}"
 
-    def WriteNodes(self, r: rtc):
+    def WriteNodes(self, r: rtc|TextCtrl):
         super().WriteGenericNodes(r, "{{\n", "}}\n")
 
 
