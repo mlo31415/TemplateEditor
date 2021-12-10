@@ -46,6 +46,7 @@ class MyFrame1 ( wx.Frame ):
 		# Connect Events
 		self.Bind( wx.EVT_SIZE, self.PanelOnSize )
 		self.m_TopText.Bind( wx.EVT_TEXT, self.OnTextTop )
+		self.m_richText1.Bind( wx.EVT_TEXT, self.OnTextBottom )
 
 	def __del__( self ):
 		pass
@@ -56,6 +57,9 @@ class MyFrame1 ( wx.Frame ):
 		event.Skip()
 
 	def OnTextTop( self, event ):
+		event.Skip()
+
+	def OnTextBottom( self, event ):
 		event.Skip()
 
 

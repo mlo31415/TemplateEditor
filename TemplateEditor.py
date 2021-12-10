@@ -31,9 +31,9 @@ class TemplateEditorFrame(MyFrame1):
 
 
     def OnTextBottom(self, event):
-        s=self.m_BottomText.GetValue()
-        #s=unparseTemplate(s)
-        #self.m_TopText2.ChangeValue(s)
+        s=self.m_richText1.GetValue()
+        s.replace("  ", " ")
+        self.m_TopText.ChangeValue(s)
 
 
 @dataclass
@@ -105,8 +105,7 @@ class NodeType(enum.Enum):
     String=1    # Contains a string, but no Nodes
     Double=2    # {{}} plus contents as a list of Nodes
     Triple=3    # {{{}}} plus contents as a list of Nodes
-    Nodes=4     #
-    Root=5      # The root of the template: A list of subnodes only.  There is only one Root
+    Root=4      # The root of the template: A list of subnodes only.  There is only one Root
 
     def __str__(self) -> str:
         if self == NodeType.Empty:
@@ -119,8 +118,6 @@ class NodeType(enum.Enum):
             return "Triple"
         if self == NodeType.Root:
             return "Root"
-
-
 
 
 ##################################################################################
@@ -156,7 +153,6 @@ class Node():
         return nstr
 
 
-
     def __repr__(self) -> str:
         Log(f"repr(1) #{self.id}")
 
@@ -165,12 +161,10 @@ class Node():
             return offset+f"Node #{self.id} -- {self.type}".rstrip()
 
         if self.type == NodeType.Root:
-            Node.offset+=3
+            Node.offset+=5
             r=offset+f"Node #{self.id} -- {self.type}\n"+"".join([y+"\n" for y in [repr(x) for x in self.subnodes] if y])
-            Node.offset-=3
+            Node.offset-=5
             return r.rstrip()
-
-
 
 
     def RichText(self, r: RichTextSpec) -> None:
@@ -180,10 +174,10 @@ class Node():
         if self.type == NodeType.Root:
             r.rtc.WriteText("Root\n")
             if self.subnodes:
-                r.indent+=2
+                r.indent+=5
                 for x in self.subnodes:
                     x.RichText(r)
-                r.indent-=2
+                r.indent-=5
             return
 
         assert False
@@ -192,7 +186,6 @@ class Node():
     @abstractmethod
     def WriteNodes(self, r: rtc):
         pass
-
 
     #-----------------------------------------------------
     # Find the first open delim
@@ -260,7 +253,6 @@ class Node():
 
     # Take a node and recursively break it up into subnodes
     # If it is a String, Double or Triple node, we examine it and if it contains subnodes, we replace it with a Nodes, Double or Triple(a list of Nodes)
-    # The we
     def Process(self) -> Node:
         #assert not self.subnodes
         Log(f"Processing Node #{self.id}")
