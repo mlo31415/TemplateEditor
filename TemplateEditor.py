@@ -13,22 +13,21 @@ from GenTemplateEditor import MyFrame1
 class TemplateEditorFrame(MyFrame1):
     def __init__(self, parent):
         MyFrame1.__init__(self, parent)
-        self.nodes: Node=Node("")
+        self.nodes: Node=Node("", NodeType.Empty)
 
         self.Show()
 
 
     def OnTextTop( self, event ):
         s=self.m_TopText.GetValue()
-        root=Node(s)
-        root.type=NodeType.Root
+        root=Node(s, NodeType.Root)
         self.nodes=root.Process()
-        Log("\n*********************\nNodes")
-        Log(repr(self.nodes))
-        #s=parseTemplate(s)
         r=RichTextSpec(self.m_richText1, 0)
         r.rtc.Clear()
         self.nodes.RichText(r)
+
+        Log("\n*********  Nodes  ************")
+        Log(repr(self.nodes))
 
 
     def OnTextBottom(self, event):
@@ -133,9 +132,9 @@ class Node():
     zcount: int=0       # The z is to move these to the end of the variable lists while debugging
     znodelist: list[Node]=[]
 
-    def __init__(self, s: str):
+    def __init__(self, s: str, nt: NodeType):
         self.subnodes: list[Node]=[]       # A list of subnodes for this node
-        self.type: NodeType=NodeType.Empty  # Normally overwritten
+        self.type: NodeType=nt
         self.string=s
 
         # We track the Nodes using this universal ID and list
@@ -159,16 +158,17 @@ class Node():
 
 
     def __repr__(self) -> str:
-        Log(f"repr #{self.id}")
+        Log(f"repr(1) #{self.id}")
+
         offset=" "*Node.offset  # For this call to repr, we use the offset at start
         if self.type == NodeType.Empty:
-            return offset+f"Node #{self.id} -- {self.type}"
+            return offset+f"Node #{self.id} -- {self.type}".rstrip()
 
         if self.type == NodeType.Root:
             Node.offset+=3
-            r=offset+f"Node #{self.id} -- {self.type},  subnodes:\n"+"".join([repr(x)+"\n" for x in self.subnodes])
+            r=offset+f"Node #{self.id} -- {self.type}\n"+"".join([y+"\n" for y in [repr(x) for x in self.subnodes] if y])
             Node.offset-=3
-            return r
+            return r.rstrip()
 
 
 
@@ -177,7 +177,6 @@ class Node():
         if self.type == NodeType.Empty:
             return
 
-        indent=' '*r.indent
         if self.type == NodeType.Root:
             r.rtc.WriteText("Root\n")
             if self.subnodes:
@@ -191,7 +190,7 @@ class Node():
 
 
     @abstractmethod
-    def WriteNodes(self, indent: str, r: rtc):
+    def WriteNodes(self, r: rtc):
         pass
 
 
@@ -263,89 +262,131 @@ class Node():
     # If it is a String, Double or Triple node, we examine it and if it contains subnodes, we replace it with a Nodes, Double or Triple(a list of Nodes)
     # The we
     def Process(self) -> Node:
-        assert not self.subnodes
+        #assert not self.subnodes
         Log(f"Processing Node #{self.id}")
 
-        Log("")
+        #Log("")
 
-        d0, d=self.Nibble()
-        if d0.NotFound:
-            return self
+        while True:
+            d0, d=self.Nibble()
+            if d0.NotFound:
+                return self
 
-        # We have found a matching set of delimiters.  The string we analyzed is now broken into parts:
-        # 0 -- l0-1   -- Opening string
-        # l0 -- l0+len(d0)-1      -- the delimiter
-        # l0+len(d0) -- lt-1      -- the contents of the node
-        # lt -- lt+len(dt)-1   -- the closing delimiter
-        # lt+len(dt) -- end    -- trailing string
+            # We have found a matching set of delimiters.  The string we analyzed is now broken into parts:
+            # 0 -- l0-1   -- Opening string
+            # l0 -- l0+len(d0)-1      -- the delimiter
+            # l0+len(d0) -- lt-1      -- the contents of the node
+            # lt -- lt+len(dt)-1   -- the closing delimiter
+            # lt+len(dt) -- end    -- trailing string
 
-        # We will recursively recognize each of the new subnodes as we create them.
-        s=self.string
-        lead=s[:d0.Start]       # The text before d0
-        mid=s[d0.End:d.Start]   # The text between d0 and d
-        end=s[d.End:]           # The text after d
-        Log(f"Process: {lead=}  {mid=}  {end=}")
+            @dataclass
+            class Parsed:
+                lead: str=""
+                mid: str=""
+                last: str=""
 
-        # Sometimes we have a String node which, when processed turns out to have subnodes.  We need to change the parent appropriately.
-        # ?? Allow a string node to have subnodes?
-        # ?? Create a nodetype which is nothing but subnodes?
-        # Since this situation occurs when we have "string {{triple}}" we *probably* want to delete the string and a new string and triple to the parent's nodelist
+                @property
+                def Num(self) -> int:
+                    return sum([0 if x == "" else 1 for x in [self.lead, self.mid, self.last]])
 
-        # The node we're processing, as yet, has no subnodes
-        # We can zero out the string since we are processing it into the nodelist
-        if lead or mid or end:
-            self.string=""
-            if self.type == NodeType.String and self.subnodes:
-                # Reach up and change self
-                pass
+            # We will recursively recognize each of the new subnodes as we create them.
+            s=self.string
+            lead=s[:d0.Start]       # The text before d0 (which does not contain subnodes)
+            mid=s[d0.End:d.Start]   # The text between d0 and d (which is a subnode)
+            end=s[d.End:]           # The text after d (which may contain subnodes)
+            p=Parsed(lead, mid, end)
+            Log(f"Process: {lead=}  {mid=}  {end=}")
+            self.string=""      # No longer needed
 
-        # Turn each of the parts into a new Node on the current Node's subnodes list
-        if lead:
-            self.subnodes.append(NodeString(lead).Process())
-            Log(f"Process: Node #{self.subnodes[-1].id} appended to Node #{self.id}")
-        if mid:
-            if d0.Len == 2:
-                self.subnodes.append(NodeDouble(mid).Process())
-                Log(f"Process: Node #{self.subnodes[-1].id} appended to Node #{self.id}")
-            elif d0.Len == 3:
-                self.subnodes.append(NodeTriple(mid).Process())
-                Log(f"Process: Node #{self.subnodes[-1].id} appended to Node #{self.id}")
+            # Sometimes we have a String node which, when processed turns out to have subnodes.  We need to change the parent appropriately.
+            # ?? Allow a string node to have subnodes?
+            # ?? Create a nodetype which is nothing but subnodes?
+            # Since this situation occurs when we have "string {{triple}}" we *probably* want to delete the string and a new string and triple to the parent's nodelist
 
-        if end:
-            self.subnodes.append(NodeString(end).Process())
-            Log(f"Process: Node #{self.subnodes[-1].id} appended to Node #{self.id}")
+            # The node we're processing, as yet, has no subnodes
+            # We can zero out the string since we are processing it into the nodelist
+            #   lead goes into the subnodes list as a String node.  It needs no further processing.
+            #   mid gets processed and then goes into the subnodes list as whetever kind of node it is.
+            #   end gets processed and then goes into the subnodes list as whetever kind of node it is.
+            if lead:
+                if p.Num > 1:
+                    self.subnodes.append(NodeString(lead))
+                    Log(f"Process: Node #{self.subnodes[-1].id} appended to Node #{self.id}")
+                else:
+                    # We remake self rather than creating a unique subnode
+                    n=NodeString(lead).Process()
+                    Log(f"Process: replace Node #{self.id} with Node #{n.id}")
+                    return n
 
-        return self
+            if mid:
+                if d0.Len == 2:
+                    if p.Num > 1:
+                        self.subnodes.append(NodeDouble(mid).Process())
+                        Log(f"Process: Node #{self.subnodes[-1].id} appended to Node #{self.id}")
+                    else:
+                        # We remake self rather than creating a unique subnode
+                        n=NodeDouble(mid).Process()
+                        Log(f"Process: replace Node #{self.id} with Node #{n.id}")
+                        return n
+                elif d0.Len == 3:
+                    if p.Num > 1:
+                        self.subnodes.append(NodeTriple(mid).Process())
+                        Log(f"Process: Node #{self.subnodes[-1].id} appended to Node #{self.id}")
+                    else:
+                        # We remake self rather than creating a unique subnode
+                        n=NodeTriple(mid).Process()
+                        Log(f"Process: replace Node #{self.id} with Node #{n.id}")
+                        return n
+            if end:
+                if p.Num > 1:
+                    # The problem here is that any subnodes derived from <end> really belong to the parent node,
+                    # so we run process which updates self, but don't need to append it anywhere as it is already slated to be appended.
+                    self.string=end
+                    self.Process()
+                    Log(f"Process: Node #{self.subnodes[-1].id} appended to Node #{self.id}")
+                else:
+                    # We remake self rather than creating a unique subnode
+                    n=NodeString(end).Process()
+                    Log("p.Num == 1")
+                    return n
+        # No need for a return, because of the while True: loop
 
 
 class NodeContainer(Node):
-    def __init__(self, s: str):
-        super().__init__(s)
+    def __init__(self, s: str, nt: NodeType):
+        super().__init__(s, nt)
 
     def __repr__(self) -> str:
+        Log(f"repr(2) #{self.id}")
         r=""
         offset=" "*Node.offset
         if self.string:
             r=offset+f"Node #{self.id} -- {self.type},  '{self.string}'"
         if self.subnodes:
             Node.offset+=3
-            r+=offset+f"Node #{self.id} -- {self.type},  subnodes:\n"+"".join([repr(x)+"\n" for x in self.subnodes])
+            r+=offset+f"Node #{self.id} -- {self.type}\n"+"".join([y+"\n" for y in [repr(x) for x in self.subnodes] if y])
             Node.offset-=3
-        return r
+        return r.rstrip()
 
     def RichText(self, r: RichTextSpec):
         Log(f"Node(#{self.id},  {self.type}, subnodes={len(self.subnodes)}, '{self.string}'")
-        # Special case it when the Node has a single string node inside
+
         indent=' '*r.indent
         if self.string:
             r.rtc.WriteText(indent+self.string+"\n")
-        elif len(self.subnodes) == 1 and self.subnodes[0].type == NodeType.String and self.subnodes[0].string:
-            r.rtc.WriteText(indent+self.subnodes[0].string+"\n")
-        if self.subnodes:
-            self.WriteNodes(indent, r)
+        # elif len(self.subnodes) == 1 and self.subnodes[0].type == NodeType.String and self.subnodes[0].string:
+        #     r.rtc.WriteText(indent+self.subnodes[0].string+"\n")
+        elif self.subnodes:
+            self.WriteNodes(r)
 
 
-    def WriteGenericNodes(self, indent: str, r: rtc, bopen: str, bclose: str):
+    def WriteGenericNodes(self, r: rtc, bopen: str, bclose: str):
+        indent=' '*r.indent
+        if len(self.subnodes) == 1 and self.subnodes[0].type == NodeType.String:
+            r.rtc.WriteText(indent+"{{"+self.subnodes[0].string+"}}\n")
+            return
+
+        # Normal case
         r.rtc.WriteText(indent+bopen)
         r.indent+=2
         for x in self.subnodes:
@@ -353,42 +394,42 @@ class NodeContainer(Node):
         r.indent-=2
         r.rtc.WriteText(indent+bclose)
 
+
 #-------------------------------------------
 class NodeString(NodeContainer):
 
     def __init__(self, s: str) -> None:
-        super().__init__(s)
-        self.type=NodeType.String
-        self.string: str=""
+        super().__init__(s, NodeType.String)
 
-    def WriteNodes(self, indent: str, r: rtc):
-        super().WriteGenericNodes(indent, r, "", "")
+    def WriteNodes(self, r: rtc):
+        indent=' '*r.indent
+        r.rtc.WriteText(indent+self.string+"\n")
+
 
 #-------------------------------------------
 class NodeDouble(NodeContainer):
     def __init__(self, s: str) -> None:
-        super().__init__(s)
-        self.type=NodeType.Double
+        super().__init__(s, NodeType.Double)
 
     def __str__(self) -> str:
         s=super().__str__()
         return "{{"+s+"}}"
 
-    def WriteNodes(self, indent: str, r: rtc):
-        super().WriteGenericNodes(indent, r, "{{\n", "}}\n")
+    def WriteNodes(self, r: rtc):
+        super().WriteGenericNodes(r, "{{\n", "}}\n")
+
 
 #-------------------------------------------
 class NodeTriple(NodeContainer):
     def __init__(self, s: str) -> None:
-        super().__init__(s)
-        self.type=NodeType.Triple
+        super().__init__(s, NodeType.Triple)
 
     def __str__(self) -> str:
         s=super().__str__()
         return "{{{"+s+"}}}"
 
-    def WriteNodes(self, indent: str, r: rtc):
-        super().WriteGenericNodes(indent, r, "{{{\n", "}}}\n")
+    def WriteNodes(self, r: rtc):
+        super().WriteGenericNodes(r, "{{{\n", "}}}\n")
 
 
 
