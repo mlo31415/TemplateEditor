@@ -412,7 +412,7 @@ class NodeContainer(Node):
     def WriteGenericNodes(self, r: rtc|TextCtrl, bopen: str, bclose: str):
         indent=' '*r.indent
         if len(self.subnodes) == 1 and self.subnodes[0].type == NodeType.String:
-            GenericWrite(r, indent+"{{"+self.subnodes[0].string+"}}\n")
+            GenericWrite(r, indent+bopen+self.subnodes[0].string+bclose+"\n")
             return
 
         # Normal case
