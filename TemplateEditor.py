@@ -23,6 +23,7 @@ class TemplateEditorFrame(MyFrame1):
         s=self.m_TopText.GetValue()
         root=Node(s, NodeType.Root)
         self.nodes=root.Process()
+        self.MergeUp(self.nodes.subnodes)
 
         r=RichTextSpec(self.m_richText1, 0)
         r.rtc.Clear()
@@ -35,6 +36,13 @@ class TemplateEditorFrame(MyFrame1):
         Log("\n*********  Nodes  ************")
         Log(repr(self.nodes))
 
+    # Run through the nodes list and consolidate cases where there is a single String node inside another node
+    def MergeUp(self, root: list[Node]):
+        for i in range(len(root)):
+            if len(root[i].subnodes) == 1 and root[i].subnodes[0].type == NodeType.String:
+                root[i]=root[i].subnodes[0]
+        for node in root:
+            self.MergeUp(node.subnodes)
 
     def OnTextBottom(self, event):
         s=self.m_bottomText.GetValue()
@@ -328,46 +336,23 @@ class Node():
             #   mid gets processed and then goes into the subnodes list as whetever kind of node it is.
             #   end gets processed and then goes into the subnodes list as whetever kind of node it is.
             if lead:
-                if p.Num > 1:
-                    self.subnodes.append(NodeString(lead))
-                    Log(f"Process: Node #{self.subnodes[-1].id} appended to Node #{self.id}")
-                else:
-                    # We remake self rather than creating a unique subnode
-                    n=NodeString(lead).Process()
-                    Log(f"Process: replace Node #{self.id} with Node #{n.id}")
-                    return n
+                self.subnodes.append(NodeString(lead))
+                Log(f"Process: Node #{self.subnodes[-1].id} appended to Node #{self.id}")
 
             if mid:
                 if d0.Len == 2:
-                    if p.Num > 1:
-                        self.subnodes.append(NodeDouble(mid).Process())
-                        Log(f"Process: Node #{self.subnodes[-1].id} appended to Node #{self.id}")
-                    else:
-                        # We remake self rather than creating a unique subnode
-                        n=NodeDouble(mid).Process()
-                        Log(f"Process: replace Node #{self.id} with Node #{n.id}")
-                        return n
-                elif d0.Len == 3:
-                    if p.Num > 1:
-                        self.subnodes.append(NodeTriple(mid).Process())
-                        Log(f"Process: Node #{self.subnodes[-1].id} appended to Node #{self.id}")
-                    else:
-                        # We remake self rather than creating a unique subnode
-                        n=NodeTriple(mid).Process()
-                        Log(f"Process: replace Node #{self.id} with Node #{n.id}")
-                        return n
-            if end:
-                if p.Num > 1:
-                    # The problem here is that any subnodes derived from <end> really belong to the parent node,
-                    # so we run process which updates self, but don't need to append it anywhere as it is already slated to be appended.
-                    self.string=end
-                    self.Process()
+                    self.subnodes.append(NodeDouble(mid).Process())
                     Log(f"Process: Node #{self.subnodes[-1].id} appended to Node #{self.id}")
-                else:
-                    # We remake self rather than creating a unique subnode
-                    n=NodeString(end).Process()
-                    Log("p.Num == 1")
-                    return n
+                elif d0.Len == 3:
+                    self.subnodes.append(NodeTriple(mid).Process())
+                    Log(f"Process: Node #{self.subnodes[-1].id} appended to Node #{self.id}")
+            if end:
+                # The problem here is that any subnodes derived from <end> really belong to the parent node,
+                # so we run process which updates self, but don't need to append it anywhere as it is already slated to be appended.
+                self.string=end
+                self.Process()
+                Log(f"Process: Node #{self.subnodes[-1].id} appended to Node #{self.id}")
+
         # No need for a return, because of the while True: loop
 
 
