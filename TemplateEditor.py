@@ -3,7 +3,6 @@ from dataclasses import dataclass
 from abc import abstractmethod
 
 import wx
-from wx import richtext as rtc
 from wx import TextCtrl
 import enum
 
@@ -23,10 +22,6 @@ class TemplateEditorFrame(MyFrame1):
         s=self.m_TopText.GetValue().strip()
         root=Node(s, NodeType.Root)
         self.nodes=root.Process()
-        # self.MergeUp(self.nodes.subnodes)
-
-        r=RichTextSpec(self.m_richText1, 0)
-        r.rtc.Clear()
 
         b=TextSpec(self.m_bottomText, 0)
         b.TextCtl.Clear()
@@ -51,13 +46,7 @@ class TemplateEditorFrame(MyFrame1):
     def OnTextBottom(self, event):
         s=self.m_bottomText.GetValue()
         s.replace("  ", " ")
-        #self.m_TopText.ChangeValue(s)
-
-
-@dataclass
-class RichTextSpec:
-    rtc: rtc
-    indent: int
+        #self.m_TopText.ChangeValue(s
 
 
 @dataclass
@@ -191,22 +180,6 @@ class Node():
             return r.rstrip()
 
 
-    def RichText(self, r: RichTextSpec) -> None:
-        if self.type == NodeType.Empty:
-            return
-
-        if self.type == NodeType.Root:
-            r.rtc.WriteText("Root\n")
-            if self.subnodes:
-                r.indent+=5
-                for x in self.subnodes:
-                    x.RichText(r)
-                r.indent-=5
-            return
-
-        assert False
-
-
     def PlainText(self, r: TextSpec) -> None:
         if self.type == NodeType.Empty:
             return
@@ -223,7 +196,7 @@ class Node():
         assert False
 
     @abstractmethod
-    def WriteNodes(self, r: rtc):
+    def WriteNodes(self, r: TextSpec):
         pass
 
     #-----------------------------------------------------
@@ -384,14 +357,6 @@ class NodeContainer(Node):
             Node.offset-=3
         return r.rstrip()
 
-    def RichText(self, r: RichTextSpec):
-        Log(f"Node(#{self.id},  {self.type}, subnodes={len(self.subnodes)}, '{self.string}'")
-
-        indent=' '*r.indent
-        if self.string:
-            GenericWrite(r, indent+self.string+"\n")
-        elif self.subnodes:
-            self.WriteNodes(r)
 
     def PlainText(self, b: TextSpec):
         Log(f"Node(#{self.id},  {self.type}, subnodes={len(self.subnodes)}, '{self.string}'")
@@ -402,7 +367,7 @@ class NodeContainer(Node):
         elif self.subnodes:
             self.WriteNodes(b)
 
-    def WriteGenericNodes(self, r: rtc|TextCtrl, bopen: str, bclose: str):
+    def WriteGenericNodes(self, r: TextSpec, bopen: str, bclose: str):
         indent=' '*r.indent
         if len(self.subnodes) == 1 and self.subnodes[0].type == NodeType.String:
             GenericWrite(r, indent+bopen+self.subnodes[0].string+bclose+"\n")
@@ -412,16 +377,13 @@ class NodeContainer(Node):
         GenericWrite(r, indent+bopen+"\n")
         r.indent+=2
         for x in self.subnodes:
-            x.RichText(r)
+            x.PlainText(r)
         r.indent-=2
         GenericWrite(r, indent+bclose+"\n")
 
 
-def GenericWrite(r: rtc|TextCtrl, s: str) -> None:
-    if type(r) is RichTextSpec:
-        r.rtc.WriteText(s)
-    else:
-        r.TextCtl.AppendText(s)
+def GenericWrite(r: TextSpec, s: str) -> None:
+    r.TextCtl.AppendText(s)
 
 #-------------------------------------------
 class NodeString(NodeContainer):
@@ -429,9 +391,9 @@ class NodeString(NodeContainer):
     def __init__(self, s: str) -> None:
         super().__init__(s, NodeType.String)
 
-    def WriteNodes(self, r: rtc):
+    def WriteNodes(self, r: TextSpec):
         indent=' '*r.indent
-        r.rtc.WriteText(indent+self.string+"\n")
+        r.TextCtl.WriteText(indent+self.string+"\n")
 
 
 #-------------------------------------------
@@ -443,7 +405,7 @@ class NodeDouble(NodeContainer):
         s=super().__str__()
         return "{{"+s+"}}"
 
-    def WriteNodes(self, r: rtc|TextCtrl):
+    def WriteNodes(self, r: TextSpec):
         super().WriteGenericNodes(r, "{{", "}}")
 
 
@@ -456,7 +418,7 @@ class NodeTriple(NodeContainer):
         s=super().__str__()
         return "{{{"+s+"}}}"
 
-    def WriteNodes(self, r: rtc):
+    def WriteNodes(self, r: TextSpec):
         super().WriteGenericNodes(r, "{{{", "}}}")
 
 
