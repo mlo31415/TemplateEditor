@@ -20,14 +20,13 @@ class TemplateEditorFrame(MyFrame1):
 
 
     def OnTextTop( self, event ):
-        s=self.m_TopText.GetValue()
+        s=self.m_TopText.GetValue().strip()
         root=Node(s, NodeType.Root)
         self.nodes=root.Process()
-        self.MergeUp(self.nodes.subnodes)
+        # self.MergeUp(self.nodes.subnodes)
 
         r=RichTextSpec(self.m_richText1, 0)
         r.rtc.Clear()
-        self.nodes.RichText(r)
 
         b=TextSpec(self.m_bottomText, 0)
         b.TextCtl.Clear()
@@ -36,13 +35,18 @@ class TemplateEditorFrame(MyFrame1):
         Log("\n*********  Nodes  ************")
         Log(repr(self.nodes))
 
-    # Run through the nodes list and consolidate cases where there is a single String node inside another node
-    def MergeUp(self, root: list[Node]):
-        for i in range(len(root)):
-            if len(root[i].subnodes) == 1 and root[i].subnodes[0].type == NodeType.String:
-                root[i]=root[i].subnodes[0]
-        for node in root:
-            self.MergeUp(node.subnodes)
+    # # Run through the nodes list and consolidate cases where there is a single String node inside another node
+    # def MergeUp(self, root: list[Node]):
+    #     for i in range(len(root)):
+    #         if len(root[i].subnodes) == 1 and root[i].subnodes[0].type == NodeType.String and len(root[i].subnodes[0].subnodes) == 0:
+    #             oldnode=root[i].subnodes[0]
+    #             Log(f"Merge Node #{oldnode.id}  into Node #{root[i].id}")
+    #             root[i].string=root[i].subnodes[0].string
+    #             oldnode.id=-1
+    #     for node in root:
+    #         self.MergeUp(node.subnodes)
+    #
+    #     Node.znodelist=[x for x in Node.znodelist if x.id != -1]
 
     def OnTextBottom(self, event):
         s=self.m_bottomText.GetValue()
@@ -114,7 +118,7 @@ class Delim:
                 delim=d
         # OK, at this point loc and delim records the next delim...or none at all
         de=Delim(start+loc, delim)
-        sprime=s+" "
+        sprime=s#+" "
         Log(f"Nextdelim: s[start:]='{s[start:]}'  Delim={de}  Remainder='{sprime[de.End:]}'")
         return de
 
@@ -268,7 +272,15 @@ class Node():
             # Since d is a closing delimiter, the stack top should hold the matching opening delimiter.
             dt=stack.pop()
             if not d.Matching(dt):
-                Log(f"*** Nibble: Process error: {d=} and {dt=} don't match")
+                if d.Len < dt.Len:
+                    # Maybe greedy parsing got us in trouble. E.g. "{{{{{" being interpreted as {{{+{{ and the matching close being interpreted as }}}+}}
+                    # Revert and see if a shorter delimiter is also present. (It usually will be.)
+                    loc-=d.Len
+                    # We know that we had {{{, so we must have {{
+                    d.delim="}}"
+                    loc=d.End
+                else:
+                    Log(f"*** Nibble: Process error: {d=} and {dt=} don't match")
                 return Delim(-1, ""), Delim(-1, "")
 
             # We know that we have found a closing delimiter that matches the open delim.
@@ -378,8 +390,6 @@ class NodeContainer(Node):
         indent=' '*r.indent
         if self.string:
             GenericWrite(r, indent+self.string+"\n")
-        # elif len(self.subnodes) == 1 and self.subnodes[0].type == NodeType.String and self.subnodes[0].string:
-        #     r.rtc.WriteText(indent+self.subnodes[0].string+"\n")
         elif self.subnodes:
             self.WriteNodes(r)
 
@@ -389,8 +399,6 @@ class NodeContainer(Node):
         indent=' '*b.indent
         if self.string:
             b.TextCtl.AppendText(indent+self.string+"\n")
-        # elif len(self.subnodes) == 1 and self.subnodes[0].type == NodeType.String and self.subnodes[0].string:
-        #     r.rtc.WriteText(indent+self.subnodes[0].string+"\n")
         elif self.subnodes:
             self.WriteNodes(b)
 
@@ -401,12 +409,12 @@ class NodeContainer(Node):
             return
 
         # Normal case
-        GenericWrite(r, indent+bopen)
+        GenericWrite(r, indent+bopen+"\n")
         r.indent+=2
         for x in self.subnodes:
             x.RichText(r)
         r.indent-=2
-        GenericWrite(r, indent+bclose)
+        GenericWrite(r, indent+bclose+"\n")
 
 
 def GenericWrite(r: rtc|TextCtrl, s: str) -> None:
@@ -436,7 +444,7 @@ class NodeDouble(NodeContainer):
         return "{{"+s+"}}"
 
     def WriteNodes(self, r: rtc|TextCtrl):
-        super().WriteGenericNodes(r, "{{\n", "}}\n")
+        super().WriteGenericNodes(r, "{{", "}}")
 
 
 #-------------------------------------------
@@ -449,7 +457,7 @@ class NodeTriple(NodeContainer):
         return "{{{"+s+"}}}"
 
     def WriteNodes(self, r: rtc):
-        super().WriteGenericNodes(r, "{{{\n", "}}}\n")
+        super().WriteGenericNodes(r, "{{{", "}}}")
 
 
 
