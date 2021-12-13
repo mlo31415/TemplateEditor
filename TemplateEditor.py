@@ -30,23 +30,12 @@ class TemplateEditorFrame(MyFrame1):
         Log("\n*********  Nodes  ************")
         Log(repr(self.nodes))
 
-    # # Run through the nodes list and consolidate cases where there is a single String node inside another node
-    # def MergeUp(self, root: list[Node]):
-    #     for i in range(len(root)):
-    #         if len(root[i].subnodes) == 1 and root[i].subnodes[0].type == NodeType.String and len(root[i].subnodes[0].subnodes) == 0:
-    #             oldnode=root[i].subnodes[0]
-    #             Log(f"Merge Node #{oldnode.id}  into Node #{root[i].id}")
-    #             root[i].string=root[i].subnodes[0].string
-    #             oldnode.id=-1
-    #     for node in root:
-    #         self.MergeUp(node.subnodes)
-    #
-    #     Node.znodelist=[x for x in Node.znodelist if x.id != -1]
 
-    def OnTextBottom(self, event):
+    def OnBottomText(self, event):
         s=self.m_bottomText.GetValue()
-        s.replace("  ", " ")
-        #self.m_TopText.ChangeValue(s
+        s=s.removeprefix("Root\n")
+        s=s.replace("\n", " ").replace("        ", " ").replace("    ", " ").replace("  ", " ").replace("  ", " ")
+        self.m_TopText.ChangeValue(s)
 
 
 @dataclass
