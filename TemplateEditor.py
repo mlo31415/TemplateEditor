@@ -89,12 +89,16 @@ class Delim:
     # -----------------------------------------------------------
     @staticmethod
     # Find the next delimiter in s beginning at start
-    def Nextdelim(s: str, start: int, Open: bool = False, Close: bool = False) -> Delim:
+    def Nextdelim(s: str, start: int, Open: bool = False, Match: str="") -> Delim:
+        assert not (Match and Open)
         if Open:
             delims=["{{{", "{{"]  # Note that these are searched in order and thus must be sorted longest to shortest
-        elif Close:
-            delims=["}}}", "}}"]
+        elif Match == "{{{":
+            delims="}}}"
+        elif Match == "{{":
+            delims="}}"
         else:
+            # Default case
             delims=["{{{", "}}}", "{{", "}}"]
         loc=-1
         delim=""
@@ -243,6 +247,10 @@ class Node():
                 return Delim(-1, ""), Delim(-1, "")
 
             # Since d is a closing delimiter, the stack top should hold the matching opening delimiter.
+            # We do greedy parsing, so "}}}}}" will by default be interpreted as "}}}"+"}}"
+            # But if the open delimiter is "{{" and the close is "}}}", then either:
+            #       We actually have at least "}}}}" (two double closes in a row)
+            # or    We have a template syntax error of some sort
             dt=stack.pop()
             if not d.Matching(dt):
                 if d.Len < dt.Len:
@@ -367,8 +375,10 @@ class NodeContainer(Node):
         elif self.subnodes:
             self.WriteNodes(b)
 
+
     def WriteGenericNodes(self, r: TextSpec, bopen: str, bclose: str):
         indent=' '*r.indent
+        # Use a compact notation for the case of a bare string inside a Double or a Triple
         if len(self.subnodes) == 1 and self.subnodes[0].type == NodeType.String:
             GenericWrite(r, indent+bopen+self.subnodes[0].string+bclose+"\n")
             return
@@ -393,7 +403,7 @@ class NodeString(NodeContainer):
 
     def WriteNodes(self, r: TextSpec):
         indent=' '*r.indent
-        r.TextCtl.WriteText(indent+self.string+"\n")
+        r.TextCtl.WriteText(indent+"'"+self.string+"\'n")
 
 
 #-------------------------------------------
