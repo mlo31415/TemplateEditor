@@ -33,8 +33,19 @@ class TemplateEditorFrame(MyFrame1):
 
     def OnBottomText(self, event):
         s=self.m_bottomText.GetValue()
+
+        # Take the formatted template text and recompact it.
+        # Remove the leading "Root:"
         s=s.removeprefix("Root\n")
-        s=s.replace("\n", " ").replace("        ", " ").replace("    ", " ").replace("  ", " ").replace("  ", " ")
+        # Remove all leading and trailing whitespace from the lines in the (edited) bottom text.
+        # That whitespace is was added to make it vaguely readable
+        bottom=""
+        for line in [x.strip() for x in s.split("\n")]:
+            if line:
+                if line[0] == "'" and line[-1] == "'":
+                    line=line[1:-1]
+                bottom+=line
+        s="".join(bottom)
         self.m_TopText.ChangeValue(s)
 
 
