@@ -23,18 +23,36 @@ class MyFrame1 ( wx.Frame ):
 
 		gSizer1 = wx.GridSizer( 1, 1, 0, 0 )
 
-		fgSizer1 = wx.FlexGridSizer( 2, 1, 0, 0 )
-		fgSizer1.SetFlexibleDirection( wx.BOTH )
-		fgSizer1.SetNonFlexibleGrowMode( wx.FLEX_GROWMODE_SPECIFIED )
+		fgSizer2 = wx.FlexGridSizer( 2, 1, 0, 0 )
+		fgSizer2.SetFlexibleDirection( wx.BOTH )
+		fgSizer2.SetNonFlexibleGrowMode( wx.FLEX_GROWMODE_SPECIFIED )
+
+		bSizer2 = wx.BoxSizer( wx.VERTICAL )
 
 		self.m_TopText = wx.TextCtrl( self, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.Size( 999,150 ), wx.TE_BESTWRAP|wx.TE_MULTILINE )
-		fgSizer1.Add( self.m_TopText, 0, wx.ALL, 5 )
-
-		self.m_bottomText = wx.TextCtrl( self, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.Size( 1000,500 ), wx.TE_BESTWRAP|wx.TE_MULTILINE )
-		fgSizer1.Add( self.m_bottomText, 0, wx.ALL, 5 )
+		bSizer2.Add( self.m_TopText, 0, wx.ALL, 5 )
 
 
-		gSizer1.Add( fgSizer1, 1, wx.EXPAND, 5 )
+		fgSizer2.Add( bSizer2, 1, wx.EXPAND, 5 )
+
+		gSizer2 = wx.GridSizer( 1, 2, 0, 0 )
+
+		gSizer2.SetMinSize( wx.Size( -1,500 ) )
+		self.m_bottomText = wx.TextCtrl( self, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.Size( -1,-1 ), wx.TE_BESTWRAP|wx.TE_MULTILINE )
+		self.m_bottomText.SetMinSize( wx.Size( 400,500 ) )
+
+		gSizer2.Add( self.m_bottomText, 0, wx.ALL, 5 )
+
+		self.m_bottomText2 = wx.TextCtrl( self, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.Size( -1,-1 ), wx.TE_BESTWRAP|wx.TE_MULTILINE )
+		self.m_bottomText2.SetMinSize( wx.Size( 400,500 ) )
+
+		gSizer2.Add( self.m_bottomText2, 0, wx.ALL, 5 )
+
+
+		fgSizer2.Add( gSizer2, 1, wx.EXPAND, 5 )
+
+
+		gSizer1.Add( fgSizer2, 1, wx.EXPAND, 5 )
 
 
 		self.SetSizer( gSizer1 )
