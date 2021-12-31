@@ -48,6 +48,9 @@ class TemplateEditorFrame(MyFrame1):
         s="".join(bottom)
         self.m_TopText.ChangeValue(s)
 
+    def OnBottomText2(self, event):
+        pass
+
 
 @dataclass
 class TextSpec:
