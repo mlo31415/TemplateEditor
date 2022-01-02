@@ -1,4 +1,6 @@
 from __future__ import annotations
+
+import re
 from dataclasses import dataclass
 from abc import abstractmethod
 
@@ -14,6 +16,7 @@ class TemplateEditorFrame(MyFrame1):
     def __init__(self, parent):
         MyFrame1.__init__(self, parent)
         self.nodes: Node=Node("", NodeType.Empty)
+        self.tokens: list[Tokens]=[]
 
         self.Show()
 
@@ -29,6 +32,13 @@ class TemplateEditorFrame(MyFrame1):
 
         Log("\n*********  Nodes  ************")
         Log(repr(self.nodes))
+
+        self.tokens: Tokens=Tokens(s)
+        self.tokens.Analyze()
+        b2=TextSpec(self.m_bottomText2, 0)
+        b2.TextCtl.Clear()
+        b2.TextCtl.AppendText(str(self.tokens))
+
 
 
     def OnBottomText(self, event):
@@ -433,6 +443,140 @@ class NodeTriple(NodeContainer):
 
     def WriteNodes(self, r: TextSpec):
         super().WriteGenericNodes(r, "{{{", "}}}")
+
+
+##########################################################################
+class Tokens():
+
+    def __init__(self, s: str):
+        # Begin by creating a list of String tokens
+        self.tokens: list[Token]=[TokenString(x) for x in s]
+
+    def __str__(self) -> str:
+        s="".join([str(x) for x in self.tokens])
+        Log(s)
+        return s
+
+    def Analyze(self):
+        # Run through the list of tokens and turn any string of the form
+        # N {'s
+        # Tokens which are not { or }
+        # N }'s
+        # into a single DoubleToken or TripleToken
+        rep="".join([x.rep() for x in self.tokens])
+        Log("Rep="+rep, Flush=True)
+
+        m=re.search("{{{([^\{}]+)}}}", rep)
+        if m is not None:
+            start=m.start()
+            end=m.end()
+            t=TokenTriple(self.tokens[start+3:end-3])
+            Log("Create TokenTriple: "+str(t))
+            self.tokens=self.tokens[:start]+[t]+self.tokens[end:]
+            self.Analyze()
+            return
+
+        m=re.search("{{\s?if([^\{}]+)}}", rep, flags=re.IGNORECASE)
+        if m is not None:
+            start=m.start()
+            end=m.end()
+            d=TokenIf(self.tokens[start+2:end-2])
+            Log("Create TokenIf: "+str(d))
+            self.tokens=self.tokens[:start]+[d]+self.tokens[end:]
+            self.Analyze()
+            return
+
+        m=re.search("{{([^\{}]+)}}", rep)
+        if m is not None:
+            start=m.start()
+            end=m.end()
+            d=TokenDouble(self.tokens[start+2:end-2])
+            Log("Create TokenDouble: "+str(d))
+            self.tokens=self.tokens[:start]+[d]+self.tokens[end:]
+            self.Analyze()
+            return
+
+
+class TokenType(enum.Enum):
+    StringToken=0
+    DoubleToken=1
+    TripleToken=2
+    IfToken=3
+
+
+class Token():
+    def __init__(self, t: TokenType):
+        self.type: TokenType=t
+
+    def __str__(self) -> str:
+        return "(Oops)"
+
+    def rep(self) -> str:
+        return "?"
+
+    def IsOpen(self) -> bool:
+        return False
+
+    def IsClose(self) -> bool:
+        return False
+
+
+class TokenString(Token):
+    def __init__(self, l: list[Token]):
+        super(TokenString, self).__init__(TokenType.StringToken)
+        self.value=l
+
+    def __str__(self) -> str:
+        return "".join([str(x) for x in self.value])
+
+
+    def rep(self) -> str:
+        if len(self.value) > 1:
+            return "$"
+        return str(self.value[0])
+
+
+    def IsOpen(self) -> bool:
+        return self.value == "{"
+
+    def IsClose(self) -> bool:
+        return self.value == "}"
+
+
+class TokenIf(Token):
+    def __init__(self, l: list[Token]):
+        super(TokenIf, self).__init__(TokenType.IfToken)
+        self.value=l    # Here s is the contents of the {{...}} block
+
+    def __str__(self) -> str:
+        return "IF{{"+"".join([str(x) for x in self.value])+"}}IF"
+
+    def rep(self) -> str:
+        return "I"
+
+
+class TokenDouble(Token):
+    def __init__(self, l: list[Token]):
+        super(TokenDouble, self).__init__(TokenType.DoubleToken)
+        self.value=l    # Here s is the contents of the {{...}} block
+
+    def __str__(self) -> str:
+        return "2{{"+"".join([str(x) for x in self.value])+"}}2"
+
+    def rep(self) -> str:
+        return "D"
+
+
+class TokenTriple(Token):
+    def __init__(self, l: list[Token]):
+        super(TokenTriple, self).__init__(TokenType.TripleToken)
+        self.value=l    # Here s is the contents of the {{{...}}} block
+
+    def __str__(self) -> str:
+        return"3{{{"+"".join([str(x) for x in self.value])+"}}}3"
+
+    def rep(self) -> str:
+        return "T"
 
 
 
