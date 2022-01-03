@@ -39,7 +39,8 @@ class TemplateEditorFrame(MyFrame1):
         self.tokens.Compress()
         b2=TextSpec(self.m_bottomText2, 0)
         b2.TextCtl.Clear()
-        b2.TextCtl.AppendText(str(self.tokens))
+        self.tokens.PlainText(b2)
+        #b2.TextCtl.AppendText(str(self.tokens))
 
 
 
@@ -471,9 +472,13 @@ class Tokens():
             return self.tokens[index]
         raise IndexError
 
-
     def __len__(self) -> int:
         return len(self.tokens)
+
+    def PlainText(self, r: TextSpec) -> None:
+        for tk in self.tokens:
+            tk.PlainText(r)
+
 
     def Append(self, t: Token):
         self.tokens.append(t)
@@ -579,6 +584,17 @@ class Token():
                 tokens[i]=None
         self.value.tokens=[x for x in tokens if x is not None]
 
+    def PlainText(self, r: TextSpec) -> None:
+        if type(self) is TokenString:
+            r.TextCtl.AppendText(self.value)
+            return
+
+        r.indent+=5
+        for tk in self.value:
+            tk.PlainText(r)
+        r.indent-=5
+
+
 
 class TokenString(Token):
     def __init__(self, l: str | Tokens):
@@ -618,9 +634,14 @@ class TokenIf(Token):
             return "IF{{"+self.type+":"+" "+str(tokens[0])+"}}IF"
         return "IF{{}}IF"
 
-
     def rep(self) -> str:
         return "I"
+
+    def PlainText(self, r: TextSpec) -> None:
+        r.TextCtl.AppendText("{{If:")
+        for tk in self.value:
+            tk.PlainText(r)
+        r.TextCtl.AppendText("}}")
 
 
 class TokenDouble(Token):
@@ -637,6 +658,11 @@ class TokenDouble(Token):
     def rep(self) -> str:
         return "D"
 
+    def PlainText(self, r: TextSpec) -> None:
+        r.TextCtl.AppendText("{{")
+        for tk in self.value:
+            tk.PlainText(r)
+        r.TextCtl.AppendText("}}")
 
 class TokenTriple(Token):
     def __init__(self, tkns: Tokens):
@@ -652,6 +678,11 @@ class TokenTriple(Token):
     def rep(self) -> str:
         return "T"
 
+    def PlainText(self, r: TextSpec) -> None:
+        r.TextCtl.AppendText("{{{")
+        for tk in self.value:
+            tk.PlainText(r)
+        r.TextCtl.AppendText("}}}")
 
 
 def main():
