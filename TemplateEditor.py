@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import Union
 
 import re
 from dataclasses import dataclass
@@ -16,7 +17,7 @@ class TemplateEditorFrame(MyFrame1):
     def __init__(self, parent):
         MyFrame1.__init__(self, parent)
         self.nodes: Node=Node("", NodeType.Empty)
-        self.tokens: list[Tokens]=[]
+        self.tokens: Tokens=Tokens()
 
         self.Show()
 
@@ -398,10 +399,10 @@ class NodeContainer(Node):
 
         # Normal case
         GenericWrite(r, indent+bopen+"\n")
-        r.indent+=2
+        r.indent+=Indent
         for x in self.subnodes:
             x.PlainText(r)
-        r.indent-=2
+        r.indent-=Indent
         GenericWrite(r, indent+bclose+"\n")
 
 
@@ -448,14 +449,27 @@ class NodeTriple(NodeContainer):
 ##########################################################################
 class Tokens():
 
-    def __init__(self, s: str):
+    def __init__(self, s: Union[None, str, Tokens, list[Token]]=None):
         # Begin by creating a list of String tokens
-        self.tokens: list[Token]=[TokenString(x) for x in s]
+        if s is None:
+            self.tokens: list[Token]=[]
+        elif type(s) is Tokens:
+            self.tokens: list[Token]=s.tokens
+        elif type(s) is list:
+            self.tokens: list[Token]=s
+        else:
+            self.tokens: list[Token]=[TokenString(x) for x in s]
 
     def __str__(self) -> str:
         s="".join([str(x) for x in self.tokens])
         Log(s)
         return s
+
+    def __len__(self) -> int:
+        return len(self.tokens)
+
+    def Append(self, t: Token):
+        self.tokens.append(t)
 
     def Analyze(self):
         # Run through the list of tokens and turn any string of the form
@@ -464,25 +478,36 @@ class Tokens():
         # N }'s
         # into a single DoubleToken or TripleToken
         rep="".join([x.rep() for x in self.tokens])
+        # rep cleverly has one character for each token with the tokens hidden behind characters so we can just scan the unparsed part of the input.
         Log("Rep="+rep, Flush=True)
 
         m=re.search("{{{([^\{}]+)}}}", rep)
         if m is not None:
             start=m.start()
             end=m.end()
-            t=TokenTriple(self.tokens[start+3:end-3])
+            t=TokenTriple(Tokens(self.tokens[start+3:end-3]))
             Log("Create TokenTriple: "+str(t))
             self.tokens=self.tokens[:start]+[t]+self.tokens[end:]
             self.Analyze()
             return
 
-        m=re.search("{{\s?if([^\{}]+)}}", rep, flags=re.IGNORECASE)
+        m=re.search("{{\s?(if[a-z]?)\:([^\{}]+)}}", rep, flags=re.IGNORECASE)
         if m is not None:
-            start=m.start()
-            end=m.end()
-            d=TokenIf(self.tokens[start+2:end-2])
+            ts=self.tokens[m.regs[2][0]:m.regs[2][1]]     # get the tokens matched by the second group
+            parts: list[Tokens]=[]
+            part=Tokens()
+            for i in range(len(ts)):
+                if type(ts[i]) is TokenString and ts[i].value == "|":
+                    parts.append(part)
+                    part=Tokens()
+                part.Append(ts[i])
+
+            if len(part) > 0:
+                parts.append(part)
+
+            d=TokenIf(Tokens(parts), m.groups()[0])
             Log("Create TokenIf: "+str(d))
-            self.tokens=self.tokens[:start]+[d]+self.tokens[end:]
+            self.tokens=self.tokens[:m.start()]+[d]+self.tokens[m.end():]   # We replace the whole set of tokens matched with just d
             self.Analyze()
             return
 
@@ -490,7 +515,7 @@ class Tokens():
         if m is not None:
             start=m.start()
             end=m.end()
-            d=TokenDouble(self.tokens[start+2:end-2])
+            d=TokenDouble(Tokens(self.tokens[start+2:end-2]))
             Log("Create TokenDouble: "+str(d))
             self.tokens=self.tokens[:start]+[d]+self.tokens[end:]
             self.Analyze()
@@ -522,9 +547,9 @@ class Token():
 
 
 class TokenString(Token):
-    def __init__(self, l: list[Token]):
+    def __init__(self, l: str | Tokens):
         super(TokenString, self).__init__(TokenType.StringToken)
-        self.value=l
+        self.value=l    # Note that this can be a single character or a string of characters
 
     def __str__(self) -> str:
         return "".join([str(x) for x in self.value])
@@ -535,6 +560,19 @@ class TokenString(Token):
             return "$"
         return str(self.value[0])
 
+    # If a string token contains a list of string tokens, turn it into a single string
+    def Compress(self):
+        if type(self.value) is str:
+            return
+        # We have a list of tokens.  Turn them into a simple string
+        s=""
+        for t in self.value:
+            if type(t.value) is list:
+                t.Compress()
+            s+=t.value
+
+        self.value=s
+
 
     def IsOpen(self) -> bool:
         return self.value == "{"
@@ -544,36 +582,52 @@ class TokenString(Token):
 
 
 class TokenIf(Token):
-    def __init__(self, l: list[Token]):
+    def __init__(self, tkns: Tokens, tokentype: str):
         super(TokenIf, self).__init__(TokenType.IfToken)
-        self.value=l    # Here s is the contents of the {{...}} block
+        for t in tkns.tokens:
+            if type(t) is TokenString:
+                t.Compress()
+        self.value: Tokens=tkns   # s is the .... contents of the {{if...}} block
+        self.type: str=tokentype         # type is "if" or "ifeq" or one of the other {{}} operations
 
     def __str__(self) -> str:
-        return "IF{{"+"".join([str(x) for x in self.value])+"}}IF"
+        tokens=self.value.tokens
+        if len(tokens) > 1:
+            return "IF{{"+self.type+":"+" "+str(tokens[0])+" |".join([str(x) for x in tokens[1:]])+"}}IF"
+        elif len(tokens) == 1:
+            return "IF{{"+self.type+":"+" "+str(tokens[0])+"}}IF"
+        return "IF{{}}IF"
+
 
     def rep(self) -> str:
         return "I"
 
 
 class TokenDouble(Token):
-    def __init__(self, l: list[Token]):
+    def __init__(self, tkns: Tokens):
         super(TokenDouble, self).__init__(TokenType.DoubleToken)
-        self.value=l    # Here s is the contents of the {{...}} block
+        for t in tkns.tokens:
+            if type(t) is TokenString:
+                t.Compress()
+        self.value=tkns    # Here s is the contents of the {{...}} block
 
     def __str__(self) -> str:
-        return "2{{"+"".join([str(x) for x in self.value])+"}}2"
+        return "2{{"+str(self.value)+"}}2"
 
     def rep(self) -> str:
         return "D"
 
 
 class TokenTriple(Token):
-    def __init__(self, l: list[Token]):
+    def __init__(self, tkns: Tokens):
         super(TokenTriple, self).__init__(TokenType.TripleToken)
-        self.value=l    # Here s is the contents of the {{{...}}} block
+        for t in tkns.tokens:
+            if type(t) is TokenString:
+                t.Compress()
+        self.value=tkns    # Here s is the contents of the {{{...}}} block
 
     def __str__(self) -> str:
-        return"3{{{"+"".join([str(x) for x in self.value])+"}}}3"
+        return"3{{{"+str(self.value)+"}}}3"
 
     def rep(self) -> str:
         return "T"
@@ -590,4 +644,5 @@ def main():
 
 
 if __name__ == "__main__":
+    Indent=6
     main()
