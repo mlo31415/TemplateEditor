@@ -36,6 +36,7 @@ class TemplateEditorFrame(MyFrame1):
 
         self.tokens: Tokens=Tokens(s)
         self.tokens.Analyze()
+        self.tokens.Compress()
         b2=TextSpec(self.m_bottomText2, 0)
         b2.TextCtl.Clear()
         b2.TextCtl.AppendText(str(self.tokens))
@@ -465,6 +466,12 @@ class Tokens():
         Log(s)
         return s
 
+    def __getitem__(self, index: int) -> Token:
+        if index < len(self.tokens):
+            return self.tokens[index]
+        raise IndexError
+
+
     def __len__(self) -> int:
         return len(self.tokens)
 
@@ -522,6 +529,13 @@ class Tokens():
             return
 
 
+    # If a string token contains a list of string tokens, turn it into a single string
+    def Compress(self):
+        for tkn in self.tokens:
+            # We have a list of tokens.  Go through it and compress each token
+            tkn.Compress()
+
+
 class TokenType(enum.Enum):
     StringToken=0
     DoubleToken=1
@@ -532,6 +546,7 @@ class TokenType(enum.Enum):
 class Token():
     def __init__(self, t: TokenType):
         self.type: TokenType=t
+        self.value: str | Tokens=""
 
     def __str__(self) -> str:
         return "(Oops)"
@@ -544,6 +559,25 @@ class Token():
 
     def IsClose(self) -> bool:
         return False
+
+    def Compress(self):
+        # A String token never contains a list of tokens
+        if type(self) is TokenString:
+            return
+
+        # self.value may be a list of tokens.  If so, compress each of them
+        if type(self.value.tokens) is list:
+            for tkn in self.value:
+                tkn.Compress()
+        # Now we deal with the (now all compressed) tokens in the list
+        # We merge adjacent String tokens
+        tokens=self.value.tokens
+        for i in range(len(tokens)-1):
+            if type(tokens[i]) is TokenString and type(tokens[i+1]) is TokenString:
+                # Merge token i into token i+1 and mark token for deletion
+                tokens[i+1].value=tokens[i].value+tokens[i+1].value
+                tokens[i]=None
+        self.value.tokens=[x for x in tokens if x is not None]
 
 
 class TokenString(Token):
@@ -559,20 +593,6 @@ class TokenString(Token):
         if len(self.value) > 1:
             return "$"
         return str(self.value[0])
-
-    # If a string token contains a list of string tokens, turn it into a single string
-    def Compress(self):
-        if type(self.value) is str:
-            return
-        # We have a list of tokens.  Turn them into a simple string
-        s=""
-        for t in self.value:
-            if type(t.value) is list:
-                t.Compress()
-            s+=t.value
-
-        self.value=s
-
 
     def IsOpen(self) -> bool:
         return self.value == "{"
@@ -607,7 +627,7 @@ class TokenDouble(Token):
     def __init__(self, tkns: Tokens):
         super(TokenDouble, self).__init__(TokenType.DoubleToken)
         for t in tkns.tokens:
-            if type(t) is TokenString:
+            if type(t) is not TokenString:
                 t.Compress()
         self.value=tkns    # Here s is the contents of the {{...}} block
 
