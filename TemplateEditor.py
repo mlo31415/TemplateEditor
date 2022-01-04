@@ -27,7 +27,7 @@ class TemplateEditorFrame(MyFrame1):
         root=Node(s, NodeType.Root)
         self.nodes=root.Process()
 
-        b=TextSpec(self.m_bottomText, 0)
+        b=TextSpec(self.m_bottomText)
         b.TextCtl.Clear()
         self.nodes.PlainText(b)
 
@@ -37,7 +37,7 @@ class TemplateEditorFrame(MyFrame1):
         self.tokens: Tokens=Tokens(s)
         self.tokens.Analyze()
         self.tokens.Compress()
-        b2=TextSpec(self.m_bottomText2, 0)
+        b2=TextSpec(self.m_bottomText2)
         b2.TextCtl.Clear()
         self.tokens.PlainText(b2)
 
@@ -67,10 +67,18 @@ class TemplateEditorFrame(MyFrame1):
 @dataclass
 class TextSpec:
     TextCtl: TextCtl
-    indent: int
+    indent: int=0
 
     def Write(self, s:str):
         self.TextCtl.AppendText(" "*self.indent+s)
+        Log("indent="+str(self.indent)+"   text="+s)
+        
+    def Right(self, d: int=5):
+        self.indent+=d
+        
+    def Left(self, d: int=5):
+        self.indent-=d
+        
 
 #===================
 @dataclass
@@ -209,10 +217,10 @@ class Node():
         if self.type == NodeType.Root:
             r.Write("Root\n")
             if self.subnodes:
-                r.indent+=5
+                r.Right()
                 for x in self.subnodes:
                     x.PlainText(r)
-                r.indent-=5
+                r.Left()
             return
 
         assert False
@@ -603,7 +611,7 @@ class TokenString(Token):
         return str(self.value[0])
 
     def PlainText(self, r: TextSpec) -> None:
-        r.Write(self.value)
+        r.Write(self.value+'\n')
         return
 
     def IsOpen(self) -> bool:
@@ -634,10 +642,12 @@ class TokenIf(Token):
         return "I"
 
     def PlainText(self, r: TextSpec) -> None:
-        r.Write("{{If:")
+        r.Write("{{If:\n")
+        r.Right()
         for tk in self.value:
             tk.PlainText(r)
-        r.Write("}}")
+        r.Left()
+        r.Write("}}\n")
 
 
 class TokenDouble(Token):
@@ -655,13 +665,18 @@ class TokenDouble(Token):
         return "D"
 
     def PlainText(self, r: TextSpec) -> None:
-
-        r.Write("{{")
-        r.indent+=5
+        # Specialcase when the Triple contains only a single string
+        if len(self.value) == 1 and type(self.value[0]) is TokenString:
+            r.Write("{{"+self.value[0].value+"}}\n")
+            return
+        # The more complicated cases
+        r.Write("{{\n")
+        r.Right()
         for tk in self.value:
             tk.PlainText(r)
-        r.indent-=5
-        r.Write("}}")
+        r.Left()
+        r.Write("}}\n")
+
 
 class TokenTriple(Token):
     def __init__(self, tkns: Tokens):
@@ -678,12 +693,17 @@ class TokenTriple(Token):
         return "T"
 
     def PlainText(self, r: TextSpec) -> None:
-        r.Write("{{{")
-        r.indent+=5
+        # Specialcase when the Triple contains only a single string
+        if len(self.value) == 1 and type(self.value[0]) is TokenString:
+            r.Write("{{{"+self.value[0].value+"}}}\n")
+            return
+        # The more complicated cases
+        r.Write("{{{\n")
+        r.Right()
         for tk in self.value:
             tk.PlainText(r)
-            r.indent-=5
-        r.Write("}}}")
+        r.Left()
+        r.Write("}}}\n")
 
 
 def main():
