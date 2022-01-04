@@ -40,7 +40,6 @@ class TemplateEditorFrame(MyFrame1):
         b2=TextSpec(self.m_bottomText2, 0)
         b2.TextCtl.Clear()
         self.tokens.PlainText(b2)
-        #b2.TextCtl.AppendText(str(self.tokens))
 
 
 
@@ -208,7 +207,7 @@ class Node():
             return
 
         if self.type == NodeType.Root:
-            r.TextCtl.AppendText("Root\n")
+            r.Write("Root\n")
             if self.subnodes:
                 r.indent+=5
                 for x in self.subnodes:
@@ -390,7 +389,7 @@ class NodeContainer(Node):
 
         indent=' '*b.indent
         if self.string:
-            b.TextCtl.AppendText(indent+self.string+"\n")
+            b.Write(self.string+"\n")
         elif self.subnodes:
             self.WriteNodes(b)
 
@@ -399,20 +398,17 @@ class NodeContainer(Node):
         indent=' '*r.indent
         # Use a compact notation for the case of a bare string inside a Double or a Triple
         if len(self.subnodes) == 1 and self.subnodes[0].type == NodeType.String:
-            GenericWrite(r, indent+bopen+self.subnodes[0].string+bclose+"\n")
+            r.Write(indent+bopen+self.subnodes[0].string+bclose+"\n")
             return
 
         # Normal case
-        GenericWrite(r, indent+bopen+"\n")
+        r.Write(indent+bopen+"\n")
         r.indent+=Indent
         for x in self.subnodes:
             x.PlainText(r)
         r.indent-=Indent
-        GenericWrite(r, indent+bclose+"\n")
+        r.Write(indent+bclose+"\n")
 
-
-def GenericWrite(r: TextSpec, s: str) -> None:
-    r.TextCtl.AppendText(s)
 
 #-------------------------------------------
 class NodeString(NodeContainer):
@@ -422,7 +418,7 @@ class NodeString(NodeContainer):
 
     def WriteNodes(self, r: TextSpec):
         indent=' '*r.indent
-        r.TextCtl.WriteText(indent+"'"+self.string+"\'n")
+        r.Write("'"+self.string+"\'n")
 
 
 #-------------------------------------------
@@ -638,10 +634,10 @@ class TokenIf(Token):
         return "I"
 
     def PlainText(self, r: TextSpec) -> None:
-        r.TextCtl.AppendText("{{If:")
+        r.Write("{{If:")
         for tk in self.value:
             tk.PlainText(r)
-        r.TextCtl.AppendText("}}")
+        r.Write("}}")
 
 
 class TokenDouble(Token):
