@@ -642,7 +642,7 @@ class TokenIf(Token):
         return "I"
 
     def PlainText(self, r: TextSpec) -> None:
-        r.Write("{{If:\n")
+        r.Write("{{"+self.type+":\n")
         r.Right()
         for tk in self.value:
             tk.PlainText(r)
