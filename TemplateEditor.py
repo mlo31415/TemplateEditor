@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Union
+from typing import Optional
 
 import re
 from dataclasses import dataclass
@@ -460,7 +460,7 @@ class NodeTriple(NodeContainer):
 ##########################################################################
 class Tokens():
 
-    def __init__(self, s: Union[None, str, Tokens, list[Token]]=None):
+    def __init__(self, s: Optional[str | Tokens | list[Token]]=None):
         # Begin by creating a list of String tokens
         if s is None:
             self.tokens: list[Token]=[]
