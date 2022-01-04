@@ -17,7 +17,7 @@ class TemplateEditorFrame(MyFrame1):
     def __init__(self, parent):
         MyFrame1.__init__(self, parent)
         self.nodes: Node=Node("", NodeType.Empty)
-        self.tokens: Tokens=Tokens()
+        self.root: TokenString=TokenString("")
 
         self.Show()
 
@@ -34,12 +34,14 @@ class TemplateEditorFrame(MyFrame1):
         Log("\n*********  Nodes  ************")
         Log(repr(self.nodes))
 
-        self.tokens: Tokens=Tokens(s)
-        self.tokens.Analyze()
-        self.tokens.Compress()
+        Log("\n"*20)
+
+        self.root=TokenString(Tokens(s))    # The raw text starts as a big Strings token
+        self.root.value.Analyze()           # Analyze it into a tree of subtokens
+        self.root.value.Compress()          # Compress any spans of String tokens
         b2=TextSpec(self.m_bottomText2)
         b2.TextCtl.Clear()
-        self.tokens.PlainText(b2)
+        self.root.value.PlainText(b2)
 
 
 
@@ -482,6 +484,10 @@ class Tokens():
     def __len__(self) -> int:
         return len(self.tokens)
 
+    def __add__(self, other: Tokens) -> Tokens:
+        l=self.tokens
+        return Tokens(l.extend(other.tokens))
+
     def PlainText(self, r: TextSpec) -> None:
         for tk in self.tokens:
             tk.PlainText(r)
@@ -573,21 +579,23 @@ class Token():
         return False
 
     def Compress(self):
-        # A String token never contains a list of tokens
-        if type(self) is TokenString:
+        # A String token containing a string can't be compressed further, so don't try
+        if type(self) is TokenString and type(self.value) is str:
             return
 
-        # self.value may be a list of tokens.  If so, compress each of them
+        # self.value may be a list of tokens.  If so, compress each of them before proceeding.
+        # Note that this will recurse downwards so that everthing below this token will be compressed.
         if type(self.value.tokens) is list:
             for tkn in self.value:
                 tkn.Compress()
-        # Now we deal with the (now all compressed) tokens in the list
-        # We merge adjacent String tokens
+
+        # Now we deal with the tokens (which are now all compressed) in the list
+        # We merge adjacent String tokens into a single String token
         tokens=self.value.tokens
         for i in range(len(tokens)-1):
             if type(tokens[i]) is TokenString and type(tokens[i+1]) is TokenString:
-                # Merge token i into token i+1 and mark token for deletion
-                tokens[i+1].value=tokens[i].value+tokens[i+1].value
+                # Merge token i into token i+1 and mark token i for deletion
+                tokens[i+1].value=(tokens[i]+tokens[i+1]).value
                 tokens[i]=None
         self.value.tokens=[x for x in tokens if x is not None]
 
@@ -604,6 +612,19 @@ class TokenString(Token):
     def __str__(self) -> str:
         return "".join([str(x) for x in self.value])
 
+    def __add__(self, other: TokenString) -> TokenString:
+        if type(self.value) is str and type(other.value) is str:
+            return TokenString(self.value+other.value)
+        if type(self.value) is Tokens and type(other.value) is Tokens:
+            return TokenString(self.value+other.value)
+        if type(self.value) is Tokens and type(other.value) is str:
+            l=self.value
+            l.Append(TokenString(other.value))
+            return TokenString(l)
+        if type(self.value) is str and type(other.value) is Tokens:
+            l=Tokens([self])
+            l.Append(other)
+            return TokenString(l)
 
     def rep(self) -> str:
         if len(self.value) > 1:
