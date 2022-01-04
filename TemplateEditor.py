@@ -70,6 +70,9 @@ class TextSpec:
     TextCtl: TextCtl
     indent: int
 
+    def Write(self, s:str):
+        self.TextCtl.AppendText(" "*self.indent+s)
+
 #===================
 @dataclass
 class Delim:
@@ -585,14 +588,7 @@ class Token():
         self.value.tokens=[x for x in tokens if x is not None]
 
     def PlainText(self, r: TextSpec) -> None:
-        if type(self) is TokenString:
-            r.TextCtl.AppendText(self.value)
-            return
-
-        r.indent+=5
-        for tk in self.value:
-            tk.PlainText(r)
-        r.indent-=5
+        assert False
 
 
 
@@ -609,6 +605,10 @@ class TokenString(Token):
         if len(self.value) > 1:
             return "$"
         return str(self.value[0])
+
+    def PlainText(self, r: TextSpec) -> None:
+        r.Write(self.value)
+        return
 
     def IsOpen(self) -> bool:
         return self.value == "{"
@@ -659,10 +659,13 @@ class TokenDouble(Token):
         return "D"
 
     def PlainText(self, r: TextSpec) -> None:
-        r.TextCtl.AppendText("{{")
+
+        r.Write("{{")
+        r.indent+=5
         for tk in self.value:
             tk.PlainText(r)
-        r.TextCtl.AppendText("}}")
+        r.indent-=5
+        r.Write("}}")
 
 class TokenTriple(Token):
     def __init__(self, tkns: Tokens):
@@ -679,10 +682,12 @@ class TokenTriple(Token):
         return "T"
 
     def PlainText(self, r: TextSpec) -> None:
-        r.TextCtl.AppendText("{{{")
+        r.Write("{{{")
+        r.indent+=5
         for tk in self.value:
             tk.PlainText(r)
-        r.TextCtl.AppendText("}}}")
+            r.indent-=5
+        r.Write("}}}")
 
 
 def main():
