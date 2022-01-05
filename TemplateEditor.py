@@ -17,7 +17,7 @@ class TemplateEditorFrame(MyFrame1):
     def __init__(self, parent):
         MyFrame1.__init__(self, parent)
         self.nodes: Node=Node("", NodeType.Empty)
-        self.root: TokenString=TokenString("")
+        self.root: TokenList=TokenList([])
 
         self.Show()
 
@@ -36,13 +36,30 @@ class TemplateEditorFrame(MyFrame1):
 
         Log("\n"*20)
 
-        self.root=TokenString(Tokens(s))    # The raw text starts as a big Strings token
-        self.root.value.Analyze()           # Analyze it into a tree of subtokens
-        self.root.value.Compress()          # Compress any spans of String tokens
+        self.root=TokenList(Tokens(s))    # The raw text starts as a big List token
+        self.root.Analyze()           # Analyze it into a tree of subtokens
+        self.root.Compress()          # Compress any spans of String tokens
         b2=TextSpec(self.m_bottomText2)
         b2.TextCtl.Clear()
-        self.root.value.PlainText(b2)
+        self.root.PlainText(b2)
 
+        # Log the token structure
+        shift=0
+        Log("\nLog of tokens:")
+        self.LogTokens(self.root, shift)
+
+    def LogTokens(self, t: Token, shift: int):
+        Log("log: "+"."*shift+repr(t), Flush=True)
+        if type(t) is TokenString:
+            return
+        # Now log its innards
+        try:
+            shift+=5
+            for tk in t.tokens:
+                self.LogTokens(tk, shift)
+            shift-=5
+        except Exception as e:
+            i=0
 
 
     def OnBottomText(self, event):
@@ -473,13 +490,19 @@ class Tokens():
 
     def __str__(self) -> str:
         s="".join([str(x) for x in self.tokens])
-        Log(s)
         return s
 
-    def __getitem__(self, index: int) -> Token:
-        if index < len(self.tokens):
-            return self.tokens[index]
-        raise IndexError
+    def __repr__(self) -> str:
+        return self.__str__()+" (Tokens object)"
+
+    def __getitem__(self, index: int|slice) -> Token|[Token]:
+        if type(index) is int:
+            if index < len(self.tokens):
+                return self.tokens[index]
+            raise IndexError
+        if type(index) is slice:
+            sl=self.tokens[index]
+            return sl
 
     def __len__(self) -> int:
         return len(self.tokens)
@@ -496,14 +519,67 @@ class Tokens():
     def Append(self, t: Token):
         self.tokens.append(t)
 
+    # If a string token contains a list of string tokens, turn it into a single string
+    def Compress(self):
+        for tkn in self.tokens:
+            # We have a list of tokens.  Go through it and compress each token
+            tkn.Compress()
+
+
+class Token():
+    def __init__(self):
+        self.tokens=None
+        self.value=None
+
+    def __str__(self) -> str:
+        return "(Oops)"
+
+    def __repr__(self) -> str:
+        return "(Oops)"
+
+    # Used to provide a code which Regex can match
+    def rep(self) -> str:
+        return "?"
+
+    def IsOpen(self) -> bool:
+        return False
+
+    def IsClose(self) -> bool:
+        return False
+
+    def Compress(self):
+        # A String token containing a string can't be compressed further, so don't try
+        # (It may be possible to combine it with another String token, but that's a job for a higher level.)
+        if type(self) is TokenString:
+            return
+
+        # self.value is a Tokens object.  Compress each of them before proceeding.
+        # Note that this will recurse downwards so that everything below this token will be compressed.
+        if len(self.tokens) > 0:
+            for tkn in self.tokens:
+                tkn.Compress()
+
+        # Now we deal with the tokens (which are now all compressed) in the list
+        # We merge adjacent String tokens into a single String token
+        tokens=self.tokens
+        for i in range(len(tokens)-1):
+            if type(tokens[i]) is TokenString and type(tokens[i+1]) is TokenString:
+                # Merge token i into token i+1 and mark token i for deletion
+                tokens[i+1].value=(tokens[i]+tokens[i+1]).value
+                tokens[i]=None
+        self.tokens=[x for x in tokens if x is not None]
+
     def Analyze(self):
         # Run through the list of tokens and turn any string of the form
         # N {'s
         # Tokens which are not { or }
         # N }'s
         # into a single DoubleToken or TripleToken
+        if len(self.tokens) == 0:
+            return
+
         rep="".join([x.rep() for x in self.tokens])
-        # rep cleverly has one character for each token with the tokens hidden behind characters so we can just scan the unparsed part of the input.
+        # rep cleverly has one character for each token with the tokens hidden behind characters, so we can just scan the unparsed part of the input.
         Log("Rep="+rep, Flush=True)
 
         m=re.search("{{{([^\{}]+)}}}", rep)
@@ -516,11 +592,14 @@ class Tokens():
             self.Analyze()
             return
 
+
         m=re.search("{{\s?(if[a-z]?)\:([^\{}]+)}}", rep, flags=re.IGNORECASE)
         if m is not None:
-            ts=self.tokens[m.regs[2][0]:m.regs[2][1]]     # get the tokens matched by the second group
+            ts=self.tokens[m.regs[2][0]:m.regs[2][1]]  # get the tokens matched by the second group
             parts: list[Tokens]=[]
             part=Tokens()
+            # Scan through the recognized token list looking for '|' delimiters
+            # the contents of each delimiter turn into one token
             for i in range(len(ts)):
                 if type(ts[i]) is TokenString and ts[i].value == "|":
                     parts.append(part)
@@ -532,7 +611,7 @@ class Tokens():
 
             d=TokenIf(Tokens(parts), m.groups()[0])
             Log("Create TokenIf: "+str(d))
-            self.tokens=self.tokens[:m.start()]+[d]+self.tokens[m.end():]   # We replace the whole set of tokens matched with just d
+            self.tokens=self.tokens[:m.start()]+[d]+self.tokens[m.end():]  # We replace the whole set of tokens matched with just d
             self.Analyze()
             return
 
@@ -547,57 +626,6 @@ class Tokens():
             return
 
 
-    # If a string token contains a list of string tokens, turn it into a single string
-    def Compress(self):
-        for tkn in self.tokens:
-            # We have a list of tokens.  Go through it and compress each token
-            tkn.Compress()
-
-
-class TokenType(enum.Enum):
-    StringToken=0
-    DoubleToken=1
-    TripleToken=2
-    IfToken=3
-
-
-class Token():
-    def __init__(self, t: TokenType):
-        self.type: TokenType=t
-        self.value: str | Tokens=""
-
-    def __str__(self) -> str:
-        return "(Oops)"
-
-    def rep(self) -> str:
-        return "?"
-
-    def IsOpen(self) -> bool:
-        return False
-
-    def IsClose(self) -> bool:
-        return False
-
-    def Compress(self):
-        # A String token containing a string can't be compressed further, so don't try
-        if type(self) is TokenString and type(self.value) is str:
-            return
-
-        # self.value may be a list of tokens.  If so, compress each of them before proceeding.
-        # Note that this will recurse downwards so that everthing below this token will be compressed.
-        if type(self.value.tokens) is list:
-            for tkn in self.value:
-                tkn.Compress()
-
-        # Now we deal with the tokens (which are now all compressed) in the list
-        # We merge adjacent String tokens into a single String token
-        tokens=self.value.tokens
-        for i in range(len(tokens)-1):
-            if type(tokens[i]) is TokenString and type(tokens[i+1]) is TokenString:
-                # Merge token i into token i+1 and mark token i for deletion
-                tokens[i+1].value=(tokens[i]+tokens[i+1]).value
-                tokens[i]=None
-        self.value.tokens=[x for x in tokens if x is not None]
 
     def PlainText(self, r: TextSpec) -> None:
         assert False
@@ -605,26 +633,18 @@ class Token():
 
 
 class TokenString(Token):
-    def __init__(self, l: str | Tokens):
-        super(TokenString, self).__init__(TokenType.StringToken)
-        self.value=l    # Note that this can be a single character or a string of characters
+    def __init__(self, l: str):
+        super(TokenString, self).__init__()
+        self.value: str=l    # Note that this can be a single character or a string of characters
 
     def __str__(self) -> str:
-        return "".join([str(x) for x in self.value])
+        return self.value
+
+    def __repr__(self) -> str:
+        return self.__str__()+" (str)"
 
     def __add__(self, other: TokenString) -> TokenString:
-        if type(self.value) is str and type(other.value) is str:
-            return TokenString(self.value+other.value)
-        if type(self.value) is Tokens and type(other.value) is Tokens:
-            return TokenString(self.value+other.value)
-        if type(self.value) is Tokens and type(other.value) is str:
-            l=self.value
-            l.Append(TokenString(other.value))
-            return TokenString(l)
-        if type(self.value) is str and type(other.value) is Tokens:
-            l=Tokens([self])
-            l.Append(other)
-            return TokenString(l)
+        return TokenString(self.value+other.value)
 
     def rep(self) -> str:
         if len(self.value) > 1:
@@ -633,7 +653,6 @@ class TokenString(Token):
 
     def PlainText(self, r: TextSpec) -> None:
         r.Write(self.value+'\n')
-        return
 
     def IsOpen(self) -> bool:
         return self.value == "{"
@@ -642,30 +661,54 @@ class TokenString(Token):
         return self.value == "}"
 
 
-class TokenIf(Token):
-    def __init__(self, tkns: Tokens, tokentype: str):
-        super(TokenIf, self).__init__(TokenType.IfToken)
-        for t in tkns.tokens:
-            if type(t) is TokenString:
-                t.Compress()
-        self.value: Tokens=tkns   # s is the .... contents of the {{if...}} block
-        self.type: str=tokentype         # type is "if" or "ifeq" or one of the other {{}} operations
+# A TokenList is a pure structural element, contining a list of tokens but having no other values
+class TokenList(Token):
+    def __init__(self, ts: Tokens):
+        super(TokenList, self).__init__()
+        self.tokens: Tokens=ts
 
     def __str__(self) -> str:
-        tokens=self.value.tokens
+        return "".join([str(x) for x in self.tokens])
+
+    def __repr__(self) -> str:
+        return self.__str__()+" (Tokens)"
+
+    def __add__(self, other: TokenList) -> TokenList:
+        return TokenList(self.tokens+other.tokens)
+
+    def rep(self) -> str:
+        return "%"
+
+    def PlainText(self, r: TextSpec) -> None:
+        for tk in self.tokens:
+            tk.PlainText(r)
+        return
+
+
+class TokenIf(Token):
+    def __init__(self, tkns: Tokens, tokentype: str):
+        super(TokenIf, self).__init__()
+        self.tokens: Tokens=tkns   # s is the .... contents of the {{if...}} block
+        self.value: str=tokentype         # type is "if" or "ifeq" or one of the other {{}} operations
+
+    def __str__(self) -> str:
+        tokens=self.tokens
         if len(tokens) > 1:
-            return "IF{{"+self.type+":"+" "+str(tokens[0])+" |".join([str(x) for x in tokens[1:]])+"}}IF"
+            return "IF{{"+self.value+":"+" "+str(tokens[0])+" |".join([str(x) for x in tokens[1:]])+"}}IF"
         elif len(tokens) == 1:
-            return "IF{{"+self.type+":"+" "+str(tokens[0])+"}}IF"
+            return "IF{{"+self.value+":"+" "+str(tokens[0])+"}}IF"
         return "IF{{}}IF"
+
+    def __repr__(self) -> str:
+        return self.__str__()+" (Tokens)"
 
     def rep(self) -> str:
         return "I"
 
     def PlainText(self, r: TextSpec) -> None:
-        r.Write("{{"+self.type+":\n")
+        r.Write("{{"+self.value+":\n")
         r.Right()
-        for tk in self.value:
+        for tk in self.tokens:
             tk.PlainText(r)
         r.Left()
         r.Write("}}\n")
@@ -673,27 +716,27 @@ class TokenIf(Token):
 
 class TokenDouble(Token):
     def __init__(self, tkns: Tokens):
-        super(TokenDouble, self).__init__(TokenType.DoubleToken)
-        for t in tkns.tokens:
-            if type(t) is not TokenString:
-                t.Compress()
-        self.value=tkns    # Here s is the contents of the {{...}} block
+        super(TokenDouble, self).__init__()
+        self.tokens: Tokens=tkns    # Here s is the contents of the {{...}} block
 
     def __str__(self) -> str:
-        return "2{{"+str(self.value)+"}}2"
+        return "2{{"+str(self.tokens)+"}}2"
+
+    def __repr__(self) -> str:
+        return "{{"+str(self.tokens)+"}}"+" (Tokens)"
 
     def rep(self) -> str:
         return "D"
 
     def PlainText(self, r: TextSpec) -> None:
         # Specialcase when the Triple contains only a single string
-        if len(self.value) == 1 and type(self.value[0]) is TokenString:
-            r.Write("{{"+self.value[0].value+"}}\n")
+        if len(self.tokens) == 1 and type(self.tokens[0]) is TokenString:
+            r.Write("{{"+self.tokens[0].value+"}}\n")
             return
         # The more complicated cases
         r.Write("{{\n")
         r.Right()
-        for tk in self.value:
+        for tk in self.tokens:
             tk.PlainText(r)
         r.Left()
         r.Write("}}\n")
@@ -701,27 +744,27 @@ class TokenDouble(Token):
 
 class TokenTriple(Token):
     def __init__(self, tkns: Tokens):
-        super(TokenTriple, self).__init__(TokenType.TripleToken)
-        for t in tkns.tokens:
-            if type(t) is TokenString:
-                t.Compress()
-        self.value=tkns    # Here s is the contents of the {{{...}}} block
+        super(TokenTriple, self).__init__()
+        self.tokens: Tokens=tkns    # Here s is the contents of the {{{...}}} block
 
     def __str__(self) -> str:
-        return"3{{{"+str(self.value)+"}}}3"
+        return"3{{{"+str(self.tokens)+"}}}3"
+
+    def __repr__(self) -> str:
+        return "{{{"+str(self.value)+"}}} (Tokens)"
 
     def rep(self) -> str:
         return "T"
 
     def PlainText(self, r: TextSpec) -> None:
         # Specialcase when the Triple contains only a single string
-        if len(self.value) == 1 and type(self.value[0]) is TokenString:
-            r.Write("{{{"+self.value[0].value+"}}}\n")
+        if len(self.tokens) == 1 and type(self.tokens[0]) is TokenString:
+            r.Write("{{{"+self.tokens[0].value+"}}}\n")
             return
         # The more complicated cases
         r.Write("{{{\n")
         r.Right()
-        for tk in self.value:
+        for tk in self.tokens:
             tk.PlainText(r)
         r.Left()
         r.Write("}}}\n")
