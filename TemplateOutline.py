@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import sys
 import glob
+from dataclasses import dataclass
 
 from HelpersPackage import WikiPagenameToWindowsFilename
 
@@ -85,44 +86,91 @@ def OutlineBraces(b: Braces) -> list[str]:
             lines.extend([Step+x for x in Outline(part)])
         return lines+["}}}"]
 
-    # Build a list of (label, value) for the arguments
-    args: list[tuple[str, list[Node]]]=[]
+    head, args=Arguments(b)
+    width=max([len(x.label) for x in args], default=0)
+    lines=[head]
+    for arg in args:
+        lines.extend(OutlineArg(arg.label, arg.nodes, width))
+    return lines+["}}"]
+
+
+# One argument of a {{template}} or {{#function:}}, or the default of a {{{parameter}}}
+@dataclass
+class Arg:
+    label: str
+    nodes: list[Node]   # The value (trimmed if MediaWiki trims it)
+    start: int          # Where the value is in the source -- relative to the offset passed to Arguments()
+    end: int
+    trimmed: bool       # MediaWiki ignores whitespace at the ends of this value
+
+
+# Return the trimmed form of a value which starts at off, and the range it occupies in the source
+def _Trimmed(nodes: list[Node], off: int) -> tuple[list[Node], int, int]:
+    s=Flat(nodes)
+    if not s.strip():
+        return [], off, off     # All whitespace: an empty range in front of it
+    return Strip(nodes), off+len(s)-len(s.lstrip()), off+len(s.rstrip())
+
+
+# Return the head (e.g. "{{#ifeq:") and the labeled arguments of a Braces node which starts at off in the source
+def Arguments(b: Braces, off: int=0) -> tuple[str, list[Arg]]:
+    # Offsets of each |-separated part
+    partOffs: list[int]=[]
+    pos=off+b.count
+    for part in b.parts:
+        partOffs.append(pos)
+        pos+=len(Flat(part))+1
+
+    def Whole(label: str, part: list[Node], poff: int) -> Arg:
+        nodes, start, end=_Trimmed(part, poff)
+        return Arg(label, nodes, start, end, True)
+
+    def Named(label: str, kv: tuple[list[Node], list[Node]], poff: int, prefix: str="") -> Arg:
+        nodes, start, end=_Trimmed(kv[1], poff+len(Flat(kv[0]))+1)
+        return Arg(prefix+Flat(Strip(kv[0])), nodes, start, end, True)
+
+    args: list[Arg]=[]
+
+    # {{{parameter|default}}} -- the default is not trimmed
+    if b.count == 3:
+        for j, part in enumerate(b.parts[1:], 1):
+            args.append(Arg("default", part, partOffs[j], partOffs[j]+len(Flat(part)), False))
+        return "{{{"+Flat(b.parts[0]).strip(), args
+
     func=SplitFunction(b.parts[0])
     if func is not None:
         name, first=func
         head="{{"+name+":"
         rest=[first]+b.parts[1:]
+        restOffs=[partOffs[0]+len(b.parts[0][0].s.split(":", 1)[0])+1]+partOffs[1:]
         if name.lower() in SwitchFunctions:
             # #switch's first argument is the value being switched on; #switchcategory tests the page's categories, so all of its arguments are cases
             if name.lower() == "#switch":
-                args.append(("value", Strip(rest[0])))
+                args.append(Whole("value", rest[0], restOffs[0]))
                 rest=rest[1:]
-            for part in rest:
+                restOffs=restOffs[1:]
+            for part, poff in zip(rest, restOffs):
                 kv=SplitNamed(part)
                 if kv is None:
-                    args.append(("default", Strip(part)))
+                    args.append(Whole("default", part, poff))
                 else:
-                    args.append(("case "+Flat(Strip(kv[0])), Strip(kv[1])))
+                    args.append(Named("", kv, poff, "case "))
         else:
             labels=ArgLabels.get(name.lower(), [])
-            for j, part in enumerate(rest):
-                args.append((labels[j] if j < len(labels) else f"arg {j+1}", Strip(part)))
-    else:
-        head="{{"+Flat(b.parts[0]).strip()
-        pos=0
-        for part in b.parts[1:]:
-            kv=SplitNamed(part)
-            if kv is None:
-                pos+=1
-                args.append((str(pos), part))   # Positional parameters are NOT trimmed by MediaWiki
-            else:
-                args.append((Flat(Strip(kv[0])), Strip(kv[1])))
+            for j, (part, poff) in enumerate(zip(rest, restOffs)):
+                args.append(Whole(labels[j] if j < len(labels) else f"arg {j+1}", part, poff))
+        return head, args
 
-    width=max([len(x[0]) for x in args], default=0)
-    lines=[head]
-    for label, value in args:
-        lines.extend(OutlineArg(label, value, width))
-    return lines+["}}"]
+    head="{{"+Flat(b.parts[0]).strip()
+    pos=0
+    for part, poff in zip(b.parts[1:], partOffs[1:]):
+        kv=SplitNamed(part)
+        if kv is None:
+            pos+=1
+            args.append(Arg(str(pos), part, poff, poff+len(Flat(part)), False))   # Positional parameters are NOT trimmed by MediaWiki
+        else:
+            args.append(Named("", kv, poff))
+    return head, args
 
 
 def LineOf(s: str, offset: int) -> int:
